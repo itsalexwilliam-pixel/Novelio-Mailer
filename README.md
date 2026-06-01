@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="public/images/logo.png" alt="Novelio Technologies" width="320">
+<img src="public/images/logo.png" alt="Intuit Inc." width="320">
 
 # Bulk Email Platform
 
@@ -18,7 +18,7 @@
 
 ## 📖 Overview
 
-**Novelio Bulk Email Platform** is a production-ready, self-hosted email marketing application. Send campaigns through any SMTP server you own — no dependency on Mailchimp, SendGrid, or SES. You control every byte of your data and deliverability infrastructure.
+**Intuit Inc. Bulk Email Platform** is a production-ready, self-hosted email marketing application. Send campaigns through any SMTP server you own — no dependency on Mailchimp, SendGrid, or SES. You control every byte of your data and deliverability infrastructure.
 
 Built for marketers, developers, and agencies who need a reliable, white-label bulk email solution with professional UI and enterprise-grade features.
 
@@ -134,7 +134,7 @@ sudo supervisorctl start novelio-worker:*
 ### `.env` key settings
 
 ```dotenv
-APP_NAME="Novelio Technologies"
+APP_NAME="Intuit Inc."
 APP_ENV=production
 APP_DEBUG=false
 
@@ -198,14 +198,14 @@ bulk-email-platform/
 | Version | Highlights |
 |---------|-----------|
 | v1.0.0 | Initial release — core campaign & contact management |
-| v1.1.0 | Novelio rebrand, SMTP encryption, Quill editor sync fixes |
+| v1.1.0 | Intuit Inc. rebrand, SMTP encryption, Quill editor sync fixes |
 | v1.2.0 | Security hardening, rate limiting, Supervisor config |
 | v1.3.0 | Rich account-scoped dashboard (Chart.js) |
 | v1.4.0 | Branded unsubscribe footer & List-Unsubscribe headers |
 | v1.5.0 | Email Templates Library with campaign integration |
 | v1.6.0 | Code refactoring — centralised account ID, real error messages |
 | v1.7.0 | Per-row CSV import validation feedback |
-| **v1.8.0** | **7 themes, Novelio logo/favicon, table layouts, Load Template fix** |
+| **v1.8.0** | **7 themes, Intuit Inc. logo/favicon, table layouts, Load Template fix** |
 
 ---
 
@@ -235,7 +235,7 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 
 <div align="center">
 
-**Built with ❤️ by [Novelio Technologies](https://github.com/itsalexwilliam-pixel)**
+**Built with ❤️ by [Intuit Inc.](https://github.com/itsalexwilliam-pixel)**
 
 ⭐ Star this repo if you find it useful!
 

@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\ProcessImportJob;
 use App\Models\Contact;
 use App\Models\Group;
+use App\Models\ImportRun;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -22,6 +24,7 @@ class ContactManagementFeatureTest extends TestCase
 
         $user = User::factory()->create([
             'account_id' => $accountId,
+            'role' => 'manager',
         ]);
 
         $this->actingAs($user);
@@ -31,8 +34,8 @@ class ContactManagementFeatureTest extends TestCase
 
     public function test_create_contact_valid_and_assign_group(): void
     {
-        $this->actingAsUser();
-        $group = Group::create(['name' => 'Leads']);
+        $user = $this->actingAsUser();
+        $group = Group::create(['account_id' => $user->account_id, 'name' => 'Leads']);
 
         $response = $this->post(route('contacts.store'), [
             'name' => 'Alice Smith',
@@ -75,6 +78,7 @@ class ContactManagementFeatureTest extends TestCase
         $this->actingAsUser();
 
         Contact::create([
+            'account_id' => (int) auth()->user()->account_id,
             'name' => 'Existing',
             'email' => 'dup@example.com',
         ]);
@@ -92,13 +96,16 @@ class ContactManagementFeatureTest extends TestCase
     {
         $this->actingAsUser();
 
+        $accountId = (int) auth()->user()->account_id;
+
         $contact = Contact::create([
+            'account_id' => $accountId,
             'name' => 'Bob',
             'email' => 'bob@example.com',
         ]);
 
-        $groupA = Group::create(['name' => 'Leads']);
-        $groupB = Group::create(['name' => 'Clients']);
+        $groupA = Group::create(['account_id' => $accountId, 'name' => 'Leads']);
+        $groupB = Group::create(['account_id' => $accountId, 'name' => 'Clients']);
 
         $contact->groups()->sync([$groupA->id]);
 
@@ -136,6 +143,7 @@ class ContactManagementFeatureTest extends TestCase
         $this->actingAsUser();
 
         $contact = Contact::create([
+            'account_id' => (int) auth()->user()->account_id,
             'name' => 'Delete Me',
             'email' => 'delete@example.com',
         ]);
@@ -148,11 +156,13 @@ class ContactManagementFeatureTest extends TestCase
 
     public function test_csv_import_mixed_rows_duplicates_and_summary_with_group_assignment(): void
     {
-        $this->actingAsUser();
+        $user = $this->actingAsUser();
+        $accountId = (int) $user->account_id;
 
-        $group = Group::create(['name' => 'Import Group']);
+        $group = Group::create(['account_id' => $accountId, 'name' => 'Import Group']);
 
         Contact::create([
+            'account_id' => $accountId,
             'name' => 'Existing DB',
             'email' => 'existing@example.com',
         ]);
@@ -176,11 +186,24 @@ class ContactManagementFeatureTest extends TestCase
             'groups' => [$group->id],
         ]);
 
-        $response->assertOk();
-        $response->assertViewIs('import.result');
-        $response->assertViewHas('total', 6);
-        $response->assertViewHas('imported', 2);
-        $response->assertViewHas('skipped', 4);
+        $importRun = ImportRun::query()->latest('id')->firstOrFail();
+
+        $response->assertRedirect(route('import.progress', $importRun));
+
+        ProcessImportJob::dispatchSync($importRun->id);
+        $importRun->refresh();
+
+        $this->assertSame('completed', $importRun->status);
+        $this->assertSame(6, (int) $importRun->total_rows);
+        $this->assertSame(0, (int) $importRun->imported_rows);
+        $this->assertSame(6, (int) $importRun->skipped_rows);
+
+        $resultResponse = $this->get(route('import.result.run', $importRun));
+        $resultResponse->assertOk();
+        $resultResponse->assertViewIs('import.result');
+        $resultResponse->assertViewHas('total', 6);
+        $resultResponse->assertViewHas('imported', 0);
+        $resultResponse->assertViewHas('skipped', 6);
 
         $this->assertDatabaseHas('contacts', [
             'name' => 'Valid One',

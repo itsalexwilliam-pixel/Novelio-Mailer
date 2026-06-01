@@ -3,16 +3,11 @@
 @section('page_title', 'SMTP / Sending')
 
 @section('content')
-@php
-    $totalServers = $servers->total();
-    $activeServers = $servers->where('is_active', 1)->count();
-@endphp
-
 <div class="space-y-6">
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <x-saas-stat-card title="Total Servers" :value="$totalServers" />
-        <x-saas-stat-card title="Active" :value="$activeServers" />
-        <x-saas-stat-card title="Inactive" :value="max($totalServers - $activeServers, 0)" />
+        <x-saas-stat-card title="Total Servers" :value="$totalServers ?? 0" />
+        <x-saas-stat-card title="Active" :value="$activeServers ?? 0" />
+        <x-saas-stat-card title="Inactive" :value="$inactiveServers ?? 0" />
     </div>
 
     @if(session('success'))
@@ -35,6 +30,15 @@
     <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm">
         <div class="flex items-center justify-between mb-4">
             <h2 class="text-lg font-semibold text-slate-900 dark:text-white">Add SMTP Server</h2>
+            @if($totalServers > 0)
+                <form method="POST" action="{{ route('smtp.destroy-all') }}" onsubmit="return confirm('Delete ALL SMTP servers for this account? This action cannot be undone.');">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit" class="inline-flex items-center px-4 py-2.5 rounded-xl bg-rose-600 text-white text-sm font-medium hover:bg-rose-700 transition">
+                        Delete All SMTP
+                    </button>
+                </form>
+            @endif
         </div>
 
         <form method="POST" action="{{ route('smtp.store') }}" class="space-y-4">

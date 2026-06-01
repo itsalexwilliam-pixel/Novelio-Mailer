@@ -162,6 +162,7 @@ class CampaignController extends Controller
         $campaign->status = !empty($data['scheduled_at']) ? 'scheduled' : 'draft';
         $campaign->warmup_enabled = $request->boolean('warmup_enabled');
         $campaign->emails_per_minute = $data['emails_per_minute'] ?? null;
+        $campaign->email_gap_seconds = $data['email_gap_seconds'] ?? null;
         $campaign->warmup_day = $campaign->warmup_day ?: 1;
         $campaign->ab_enabled = $abEnabled;
         $campaign->ab_subject_b = $abEnabled ? ($data['ab_subject_b'] ?? null) : null;
@@ -231,6 +232,7 @@ class CampaignController extends Controller
             'remove_attachment' => ['nullable', 'boolean'],
             'warmup_enabled' => ['nullable', 'boolean'],
             'emails_per_minute' => ['nullable', 'integer', 'min:1', 'max:10000'],
+            'email_gap_seconds' => ['nullable', 'integer', 'min:1', 'max:300'],
             'ab_enabled' => ['nullable', 'boolean'],
             'ab_subject_b' => ['nullable', 'string', 'max:255'],
             'ab_body_b' => ['nullable', 'string'],
@@ -248,6 +250,7 @@ class CampaignController extends Controller
             'status' => !empty($data['scheduled_at']) ? 'scheduled' : 'draft',
             'warmup_enabled' => $isWarmupEnabled,
             'emails_per_minute' => $data['emails_per_minute'] ?? null,
+            'email_gap_seconds' => $data['email_gap_seconds'] ?? null,
             'ab_enabled' => $abEnabled,
             'ab_subject_b' => $abEnabled ? ($data['ab_subject_b'] ?? null) : null,
             'ab_body_b' => $abEnabled && !empty($data['ab_body_b'])

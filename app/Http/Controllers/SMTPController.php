@@ -18,11 +18,17 @@ class SMTPController extends Controller
     {
         $accountId = $this->getAccountId($request);
 
-        $servers = SmtpServer::forAccount($accountId)
+        $baseQuery = SmtpServer::forAccount($accountId);
+
+        $totalServers = (clone $baseQuery)->count();
+        $activeServers = (clone $baseQuery)->where('is_active', true)->count();
+        $inactiveServers = max($totalServers - $activeServers, 0);
+
+        $servers = $baseQuery
             ->latest()
             ->paginate(10);
 
-        return view('smtp.index', compact('servers'));
+        return view('smtp.index', compact('servers', 'totalServers', 'activeServers', 'inactiveServers'));
     }
 
     public function store(Request $request): RedirectResponse
@@ -214,8 +220,17 @@ class SMTPController extends Controller
             return back()->withErrors(['smtp_csv' => 'CSV file is empty.']);
         }
 
+        // Handle UTF-8 BOM in first header cell (common with Excel CSV exports)
+        if (isset($headers[0])) {
+            $headers[0] = preg_replace('/^\xEF\xBB\xBF/', '', (string) $headers[0]);
+        }
+
+        $normalizedHeaders = array_map(
+            static fn ($h) => strtolower(trim((string) $h)),
+            $headers
+        );
+
         $requiredHeaders = ['label', 'host', 'port', 'username', 'password', 'encryption', 'from_email', 'from_name'];
-        $normalizedHeaders = array_map(fn ($h) => strtolower(trim((string) $h)), $headers);
 
         foreach ($requiredHeaders as $requiredHeader) {
             if (! in_array($requiredHeader, $normalizedHeaders, true)) {
@@ -309,6 +324,19 @@ class SMTPController extends Controller
             'smtp_bulk_failed_rows' => $failedRows,
             'success' => "Bulk upload completed. Added {$successCount} SMTP server(s).",
         ]);
+    }
+
+    public function destroyAll(Request $request): RedirectResponse
+    {
+        $accountId = $this->getAccountId($request);
+
+        $deletedCount = SmtpServer::forAccount($accountId)->count();
+        SmtpServer::forAccount($accountId)->delete();
+
+        return redirect()->route('smtp.index')->with(
+            'success',
+            "Deleted {$deletedCount} SMTP server(s) successfully."
+        );
     }
 
     public function health(Request $request)

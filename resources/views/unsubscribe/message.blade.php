@@ -88,7 +88,8 @@
         <p>{{ $message }}</p>
 
         <p class="brand">
-            &copy; {{ date('Y') }} <strong>{{ config('app.name', 'Novelio Technologies') }}</strong>. All rights reserved.
+            &copy; {{ date('Y') }} <strong>{{ config('app.name', 'Novelio Technologies') }}</strong><br>
+            Dover, Delaware, 19901 USA
         </p>
     </div>
 </body>

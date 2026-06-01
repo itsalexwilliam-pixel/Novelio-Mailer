@@ -113,7 +113,7 @@
                 Preview Email
             </button>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                     <label class="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">Schedule (optional)</label>
                     <input type="datetime-local" name="scheduled_at"
@@ -129,6 +129,17 @@
                            placeholder="e.g. 60">
                     <p class="mt-1 text-xs text-slate-500">Leave blank for default worker throughput. Example: 60 = approx 60 emails per minute.</p>
                     @error('emails_per_minute')
+                        <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
+                    @enderror
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">Email Gap (seconds)</label>
+                    <input type="number" min="1" max="300" step="1" name="email_gap_seconds"
+                           value="{{ old('email_gap_seconds', $campaign->email_gap_seconds) }}"
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                           placeholder="e.g. 5">
+                    <p class="mt-1 text-xs text-slate-500">Optional fixed delay after each sent email for this campaign. Leave blank to use system default.</p>
+                    @error('email_gap_seconds')
                         <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
                     @enderror
                 </div>
