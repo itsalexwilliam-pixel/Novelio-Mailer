@@ -13,7 +13,10 @@ return new class extends Migration
     {
         Schema::create('email_clicks', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('email_queue_id')->constrained('email_queue')->cascadeOnDelete()->index();
+            $table->unsignedBigInteger('email_queue_id');
+            $table->foreign('email_queue_id', 'email_clicks_queue_fk')
+                ->references('id')->on('email_queue')->cascadeOnDelete();
+            $table->index('email_queue_id', 'email_clicks_queue_id_idx');
             $table->text('url');
             $table->timestamp('clicked_at');
             $table->string('ip_address', 45)->nullable();
