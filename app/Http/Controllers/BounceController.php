@@ -26,7 +26,8 @@ class BounceController extends Controller
         // SNS subscription confirmation
         if (($payload['Type'] ?? '') === 'SubscriptionConfirmation') {
             $url = $payload['SubscribeURL'] ?? null;
-            if ($url) {
+            // SSRF guard: only allow genuine AWS SNS subscription URLs.
+            if ($url && preg_match('#^https://sns\.[a-z0-9-]+\.amazonaws\.com/#i', $url)) {
                 \Illuminate\Support\Facades\Http::get($url);
             }
             return response()->json(['ok' => true]);
@@ -59,12 +60,22 @@ class BounceController extends Controller
             $email      = strtolower(trim($recipient['emailAddress'] ?? ''));
             $diagnostic = $recipient['diagnosticCode'] ?? null;
 
-            if (!$email) continue;
+            if (!$email) {
+                continue;
+            }
+
+            // Attempt to resolve account_id from the matching contact so the
+            // bounce record can be correctly attributed to an account.
+            $accountId = Contact::whereRaw('LOWER(email) = ?', [$email])
+                ->value('account_id');
+
+            $normalizedType = $bounceType === 'permanent' ? 'hard' : 'soft';
 
             // Record the bounce
             EmailBounce::firstOrCreate(
-                ['email' => $email, 'bounce_type' => $bounceType === 'permanent' ? 'hard' : 'soft'],
+                ['email' => $email, 'bounce_type' => $normalizedType],
                 [
+                    'account_id'     => $accountId,
                     'bounce_subtype' => $bounceSubtype,
                     'diagnostic'     => $diagnostic,
                     'source'         => 'ses',
@@ -74,7 +85,7 @@ class BounceController extends Controller
 
             // Hard bounce → mark contact + auto-unsubscribe
             if (in_array($bounceType, ['permanent', 'hard'], true)) {
-                Contact::where('email', $email)->update(['is_bounced' => true]);
+                Contact::whereRaw('LOWER(email) = ?', [$email])->update(['is_bounced' => true]);
 
                 Unsubscribe::updateOrCreate(
                     ['email' => $email],
@@ -92,11 +103,17 @@ class BounceController extends Controller
 
         foreach ($recipients as $recipient) {
             $email = strtolower(trim($recipient['emailAddress'] ?? ''));
-            if (!$email) continue;
+            if (!$email) {
+                continue;
+            }
+
+            // Attempt to resolve account_id from the matching contact.
+            $accountId = Contact::whereRaw('LOWER(email) = ?', [$email])
+                ->value('account_id');
 
             EmailBounce::firstOrCreate(
                 ['email' => $email, 'bounce_type' => 'complaint'],
-                ['source' => 'ses', 'bounced_at' => now()]
+                ['account_id' => $accountId, 'source' => 'ses', 'bounced_at' => now()]
             );
 
             // Complaint → auto-unsubscribe
@@ -147,7 +164,7 @@ class BounceController extends Controller
     }
 
     /**
-     * Bounces list page (admin view).
+     * Bounces list page.
      */
     public function index(Request $request)
     {
@@ -159,10 +176,19 @@ class BounceController extends Controller
             ->latest()
             ->paginate(25);
 
-        $totalBounces   = EmailBounce::count();
-        $hardBounces    = EmailBounce::where('bounce_type', 'hard')->count();
-        $softBounces    = EmailBounce::where('bounce_type', 'soft')->count();
-        $complaints     = EmailBounce::where('bounce_type', 'complaint')->count();
+        // Scope bounce counts to this account only, using a subquery for efficiency.
+        // Covers both SES-reported bounces (which now store account_id) and manual bounces.
+        $accountEmailsSubquery = Contact::where('account_id', $accountId)->select('email');
+
+        $bouncesBase = EmailBounce::where(function ($q) use ($accountId, $accountEmailsSubquery) {
+            $q->where('account_id', $accountId)
+              ->orWhereIn('email', $accountEmailsSubquery);
+        });
+
+        $totalBounces = (clone $bouncesBase)->count();
+        $hardBounces  = (clone $bouncesBase)->where('bounce_type', 'hard')->count();
+        $softBounces  = (clone $bouncesBase)->where('bounce_type', 'soft')->count();
+        $complaints   = (clone $bouncesBase)->where('bounce_type', 'complaint')->count();
 
         return view('bounces.index', compact(
             'bouncedContacts', 'totalBounces', 'hardBounces', 'softBounces', 'complaints'

@@ -17,6 +17,14 @@ class ProcessCampaignQueueJob implements ShouldQueue
     public int $timeout = 300;
     public int $tries = 1;
 
+    /**
+     * Lock TTL (seconds) — must exceed the job $timeout so the lock never expires
+     * while the job is still running. A stale lock would allow a second worker to
+     * start processing the same campaign concurrently, causing duplicate sends.
+     * Set to 360 s (6 min) which safely covers the 300 s (5 min) timeout.
+     */
+    private const LOCK_TTL_SECONDS = 360;
+
     public function __construct(
         public int $campaignId,
         public ?int $limit = null
@@ -27,7 +35,7 @@ class ProcessCampaignQueueJob implements ShouldQueue
     {
         $lockKey = "campaign_queue_worker_running_{$this->campaignId}";
 
-        if (!Cache::add($lockKey, 1, now()->addMinutes(2))) {
+        if (!Cache::add($lockKey, 1, self::LOCK_TTL_SECONDS)) {
             return;
         }
 

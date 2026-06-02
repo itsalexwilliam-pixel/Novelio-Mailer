@@ -139,11 +139,6 @@ class SingleEmailController extends Controller
         try {
             $this->applySmtpConfig($smtp, $data['from_email'] ?? null, $data['from_name'] ?? null);
 
-            Log::info('SingleEmail HTML Preview', [
-                'has_template_html' => $hasTemplateHtml,
-                'sample' => substr($processedMessage, 0, 500),
-            ]);
-
             $mail = Mail::to($data['to']);
 
             if (!empty($ccList)) {

@@ -259,9 +259,10 @@ class ReportsController extends Controller
             ->distinct('email_clicks.email_queue_id')
             ->count('email_clicks.email_queue_id');
 
-        // Count unsubscribes by matching emails that were sent in this campaign
-        $campaignEmails = EmailQueue::where('campaign_id', $campaignId)->pluck('email');
-        $totalUnsubs = Unsubscribe::whereIn('email', $campaignEmails)->count();
+        // Count unsubscribes using a DB subquery to avoid loading all campaign
+        // email addresses into PHP memory (which can be huge for large campaigns).
+        $campaignEmailsSubquery = EmailQueue::where('campaign_id', $campaignId)->select('email');
+        $totalUnsubs = Unsubscribe::whereIn('email', $campaignEmailsSubquery)->count();
 
         $openRate  = $totalSent > 0 ? round(($totalOpens  / $totalSent) * 100, 2) : 0;
         $clickRate = $totalSent > 0 ? round(($totalClicks / $totalSent) * 100, 2) : 0;

@@ -185,18 +185,19 @@ class DripCampaignController extends Controller
         // Auto-enroll all contacts from the linked group (if set)
         $enrolled = 0;
         if ($drip->group_id) {
-            $unsubEmails = Unsubscribe::pluck('email')->map(fn($e) => strtolower($e))->flip();
+            // Filter unsubscribed contacts at the database level via a subquery
+            // instead of loading all Unsubscribe rows into PHP memory.
+            $unsubEmailsSubquery = Unsubscribe::select('email');
 
             $contacts = Contact::whereHas('groups', fn($q) => $q->where('groups.id', $drip->group_id))
                 ->where('account_id', $accountId)
                 ->where('is_bounced', false)
+                ->whereNotIn('email', $unsubEmailsSubquery)
                 ->get(['id', 'email', 'account_id']);
 
             $firstStep = $drip->steps()->orderBy('position')->first();
 
             foreach ($contacts as $contact) {
-                if ($unsubEmails->has(strtolower($contact->email))) continue;
-
                 $created = DripEnrollment::firstOrCreate(
                     ['drip_campaign_id' => $drip->id, 'contact_id' => $contact->id],
                     [
@@ -207,7 +208,9 @@ class DripCampaignController extends Controller
                     ]
                 );
 
-                if ($created->wasRecentlyCreated) $enrolled++;
+                if ($created->wasRecentlyCreated) {
+                    $enrolled++;
+                }
             }
         }
 

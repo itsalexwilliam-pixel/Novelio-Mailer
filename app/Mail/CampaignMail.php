@@ -13,7 +13,6 @@ use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use TijsVerkoyen\CssToInlineStyles\CssToInlineStyles;
 
@@ -120,10 +119,6 @@ class CampaignMail extends Mailable
                 $inlined,
                 1
             ) ?? $inlined;
-
-            Log::info('Inline HTML sample', [
-                'preview' => substr($inlined, 0, 1000),
-            ]);
 
             return $inlined;
         } catch (\Throwable) {

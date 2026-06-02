@@ -104,15 +104,11 @@ class WorkMailsQueueCommand extends Command
             $bucket = $orderedBuckets[$campaignId] ?? collect();
 
             foreach ($bucket as $item) {
-                $sent = $this->processQueueItem($item);
+                $this->processQueueItem($item);
                 $processed++;
                 $processedPerCampaign[$campaignId] = ($processedPerCampaign[$campaignId] ?? 0) + 1;
 
                 $this->throttleByRate($windowStartedAt, $processedPerCampaign[$campaignId], $campaignRunCaps[$campaignId]);
-
-                if (!$sent) {
-                    continue;
-                }
             }
         } else {
             $activeCampaignIds = array_keys($orderedBuckets);

@@ -137,6 +137,9 @@ class SendController extends Controller
 
         $campaign->update(['status' => 'sending']);
 
-        return redirect()->route('campaigns.index')->with('success', 'Campaign resumed successfully.');
+        // Dispatch the background worker so emails actually start sending again.
+        ProcessCampaignQueueJob::dispatch($campaign->id);
+
+        return redirect()->route('campaigns.index')->with('success', 'Campaign resumed successfully. Background worker triggered.');
     }
 }

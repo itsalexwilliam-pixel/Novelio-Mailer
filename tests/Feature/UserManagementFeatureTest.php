@@ -132,11 +132,13 @@ class UserManagementFeatureTest extends TestCase
             'role' => 'manager',
         ]);
 
-        $this->actingAs($operator)->get(route('users.index'))->assertStatus(403);
-        $this->actingAs($operator)->get(route('users.create'))->assertStatus(403);
-        $this->actingAs($operator)->get(route('users.edit', $target))->assertStatus(403);
-        $this->actingAs($operator)->post(route('users.store'), [])->assertStatus(403);
-        $this->actingAs($operator)->put(route('users.update', $target), [])->assertStatus(403);
+        // AdminMiddleware redirects browser requests to the dashboard instead of
+        // returning a raw 403, so non-admin access is denied via 302 redirect.
+        $this->actingAs($operator)->get(route('users.index'))->assertRedirect(route('dashboard'));
+        $this->actingAs($operator)->get(route('users.create'))->assertRedirect(route('dashboard'));
+        $this->actingAs($operator)->get(route('users.edit', $target))->assertRedirect(route('dashboard'));
+        $this->actingAs($operator)->post(route('users.store'), [])->assertRedirect(route('dashboard'));
+        $this->actingAs($operator)->put(route('users.update', $target), [])->assertRedirect(route('dashboard'));
     }
 
     public function test_duplicate_email_is_blocked_on_create(): void

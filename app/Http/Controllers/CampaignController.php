@@ -134,6 +134,7 @@ class CampaignController extends Controller
             'attachment' => ['nullable', 'file', 'max:10240'],
             'warmup_enabled' => ['nullable', 'boolean'],
             'emails_per_minute' => ['nullable', 'integer', 'min:1', 'max:10000'],
+            'email_gap_seconds' => ['nullable', 'integer', 'min:1', 'max:300'],  // Fix: was missing from store()
             'ab_enabled' => ['nullable', 'boolean'],
             'ab_subject_b' => ['nullable', 'string', 'max:255'],
             'ab_body_b' => ['nullable', 'string'],
@@ -199,19 +200,40 @@ class CampaignController extends Controller
         $accountId = $this->currentAccountId();
         abort_if((int) $campaign->account_id !== $accountId, 403);
 
-        $contacts = Contact::query()->where('account_id', $accountId)->with('groups')->orderBy('name')->get();        $groupContacts = Contact::query()
+        $contacts = Contact::query()
+            ->where('account_id', $accountId)
+            ->with('groups')
+            ->orderBy('name')
+            ->get();
+
+        $groupContacts = Contact::query()
             ->whereHas('groups', function ($query) use ($accountId) {
                 $query->where('groups.account_id', $accountId);
             })
             ->with('groups')
             ->orderBy('name')
-            ->get();        $groups = Group::query()->where('account_id', $accountId)->orderBy('name')->get();
-        $selectedContactIds = $campaign->contacts()->where('contacts.account_id', $accountId)->pluck('contacts.id')->toArray();
-        $selectedGroupIds   = [];
+            ->get();
+
+        $groups = Group::query()->where('account_id', $accountId)->orderBy('name')->get();
+
+        $selectedContactIds = $campaign->contacts()
+            ->where('contacts.account_id', $accountId)
+            ->pluck('contacts.id')
+            ->toArray();
+
+        $selectedGroupIds = [];
 
         $warmupSchedule = Campaign::WARMUP_SCHEDULE;
 
-        return view('campaigns.edit', compact('campaign', 'contacts', 'groupContacts', 'groups', 'selectedContactIds', 'selectedGroupIds', 'warmupSchedule'));
+        return view('campaigns.edit', compact(
+            'campaign',
+            'contacts',
+            'groupContacts',
+            'groups',
+            'selectedContactIds',
+            'selectedGroupIds',
+            'warmupSchedule'
+        ));
     }
 
     public function update(Request $request, Campaign $campaign)

@@ -58,7 +58,18 @@ class SmtpServer extends Model
 
     public function getPasswordAttribute($value): string
     {
-        return decrypt($value);
+        if (empty($value)) {
+            return '';
+        }
+
+        try {
+            return decrypt($value);
+        } catch (\Illuminate\Contracts\Encryption\DecryptException) {
+            // Guard against corrupted or manually-inserted plain-text passwords.
+            // Return empty string so callers fail gracefully instead of throwing a 500.
+            \Illuminate\Support\Facades\Log::warning("SmtpServer #{$this->id}: password could not be decrypted — check stored value.");
+            return '';
+        }
     }
 
     public function maskedPassword(): string
