@@ -19,6 +19,7 @@ class ImportRun extends Model
         'email_column',
         'business_name_column',
         'website_column',
+        'phone_column',
         'group_ids',
         'total_rows',
         'processed_rows',

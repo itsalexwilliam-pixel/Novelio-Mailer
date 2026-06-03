@@ -472,6 +472,11 @@ class ReportsController extends Controller
             ->selectRaw('
                 email_queue.id,
                 email_queue.email,
+                email_queue.type,
+                email_queue.subject,
+                email_queue.from_name,
+                email_queue.from_email,
+                email_queue.attempts,
                 email_queue.status as queue_status,
                 email_queue.last_error,
                 email_queue.sent_at,
@@ -489,6 +494,11 @@ class ReportsController extends Controller
             ->groupBy(
                 'email_queue.id',
                 'email_queue.email',
+                'email_queue.type',
+                'email_queue.subject',
+                'email_queue.from_name',
+                'email_queue.from_email',
+                'email_queue.attempts',
                 'email_queue.status',
                 'email_queue.last_error',
                 'email_queue.sent_at',
@@ -532,10 +542,11 @@ class ReportsController extends Controller
 
         [$dateRange, $from, $to] = $this->resolveDateRange($request, '7d');
 
-        $status = $request->string('status', 'all')->toString();
+        $status     = $request->string('status', 'all')->toString();
+        $emailType  = $request->string('type', 'all')->toString();   // campaign / single / test / all
         $campaignId = $request->integer('campaign_id') ?: null;
-        $smtpId = $request->integer('smtp_id') ?: null;
-        $recipient = trim((string) $request->input('recipient', ''));
+        $smtpId     = $request->integer('smtp_id') ?: null;
+        $recipient  = trim((string) $request->input('recipient', ''));
 
         $campaignOptions = Campaign::query()
             ->where('account_id', $accountId)
@@ -556,6 +567,10 @@ class ReportsController extends Controller
             $baseLogsQuery->where('email_queue.status', $status);
         }
 
+        if (in_array($emailType, ['campaign', 'single', 'test'], true)) {
+            $baseLogsQuery->where('email_queue.type', $emailType);
+        }
+
         if ($campaignId) {
             $baseLogsQuery->where('email_queue.campaign_id', $campaignId);
         }
@@ -573,11 +588,16 @@ class ReportsController extends Controller
                 'email_queue.id',
                 'email_queue.email',
                 'email_queue.subject',
+                'email_queue.type',
                 'email_queue.status',
+                'email_queue.attempts',
+                'email_queue.from_name',
+                'email_queue.from_email',
                 'email_queue.last_error',
                 'email_queue.sent_at',
                 'email_queue.created_at',
                 'campaigns.name as campaign_name',
+                'smtp_servers.id as smtp_id',
                 'smtp_servers.name as smtp_name',
                 'smtp_servers.host as smtp_host',
             ])
@@ -589,6 +609,10 @@ class ReportsController extends Controller
         $summaryBase = EmailQueue::query()
             ->where('account_id', $accountId)
             ->whereBetween(DB::raw('COALESCE(sent_at, created_at)'), [$from, $to]);
+
+        if (in_array($emailType, ['campaign', 'single', 'test'], true)) {
+            $summaryBase->where('type', $emailType);
+        }
 
         if ($campaignId) {
             $summaryBase->where('campaign_id', $campaignId);
@@ -602,30 +626,31 @@ class ReportsController extends Controller
             $summaryBase->where('email', 'like', '%' . $recipient . '%');
         }
 
-        $total = (clone $summaryBase)->count();
+        $total  = (clone $summaryBase)->count();
         $queued = (clone $summaryBase)->whereIn('status', ['queued', 'pending'])->count();
-        $sent = (clone $summaryBase)->where('status', 'sent')->count();
+        $sent   = (clone $summaryBase)->where('status', 'sent')->count();
         $failed = (clone $summaryBase)->where('status', 'failed')->count();
 
         return view('reports.live-logs', [
             'filters' => [
                 'date_range' => $dateRange,
-                'from' => $from->toDateString(),
-                'to' => $to->toDateString(),
-                'status' => $status,
+                'from'       => $from->toDateString(),
+                'to'         => $to->toDateString(),
+                'status'     => $status,
+                'type'       => $emailType,
                 'campaign_id' => $campaignId,
-                'smtp_id' => $smtpId,
-                'recipient' => $recipient,
+                'smtp_id'    => $smtpId,
+                'recipient'  => $recipient,
             ],
             'summary' => [
-                'total' => $total,
+                'total'  => $total,
                 'queued' => $queued,
-                'sent' => $sent,
+                'sent'   => $sent,
                 'failed' => $failed,
             ],
             'campaignOptions' => $campaignOptions,
-            'smtpOptions' => $smtpOptions,
-            'logs' => $logs,
+            'smtpOptions'     => $smtpOptions,
+            'logs'            => $logs,
         ]);
     }
 
@@ -635,12 +660,13 @@ class ReportsController extends Controller
         $type = $request->string('type', 'campaign')->toString();
 
         [$dateRange, $from, $to] = $this->resolveDateRange($request, '30d');
-        $campaignId = $request->integer('campaign_id') ?: null;
-        $smtpId = $request->integer('smtp_id') ?: null;
-        $status = $request->string('status', 'all')->toString();
-        $recipient = trim((string) $request->input('recipient', ''));
+        $campaignId      = $request->integer('campaign_id') ?: null;
+        $smtpId          = $request->integer('smtp_id') ?: null;
+        $status          = $request->string('status', 'all')->toString();
+        $recipient       = trim((string) $request->input('recipient', ''));
+        $emailTypeFilter = $request->string('email_type', 'all')->toString(); // for live-logs email-type filter
 
-        if (!in_array($type, ['campaign', 'single-email', 'warmup', 'smtp'], true)) {
+        if (!in_array($type, ['campaign', 'single-email', 'warmup', 'smtp', 'live-logs'], true)) {
             $type = 'campaign';
         }
 
@@ -650,7 +676,7 @@ class ReportsController extends Controller
             'Content-Disposition' => 'attachment; filename="'.$filename.'"',
         ];
 
-        return response()->stream(function () use ($type, $accountId, $from, $to, $campaignId) {
+        return response()->stream(function () use ($type, $accountId, $from, $to, $campaignId, $smtpId, $status, $recipient, $emailTypeFilter) {
             $handle = fopen('php://output', 'w');
             fwrite($handle, chr(0xEF).chr(0xBB).chr(0xBF));
 
@@ -725,18 +751,24 @@ class ReportsController extends Controller
                 }
             } elseif ($type === 'smtp') {
                 fputcsv($handle, [
+                    'Sent At',
                     'Recipient',
+                    'Subject',
+                    'Type',
+                    'SMTP ID',
                     'SMTP Name',
                     'SMTP Host',
                     'SMTP Active',
                     'Health Status',
                     'Campaign',
+                    'From Name',
+                    'From Email',
                     'Queue Status',
+                    'Attempts',
                     'Opened',
                     'Clicked',
                     'Bounced',
                     'Last Error',
-                    'Sent At',
                 ]);
 
                 $rows = EmailQueue::query()
@@ -763,9 +795,15 @@ class ReportsController extends Controller
                     ->selectRaw('
                         email_queue.id,
                         email_queue.email,
+                        email_queue.subject,
+                        email_queue.type,
                         email_queue.status as queue_status,
+                        email_queue.attempts,
+                        email_queue.from_name,
+                        email_queue.from_email,
                         email_queue.last_error,
                         COALESCE(email_queue.sent_at, email_queue.created_at) as sent_time,
+                        smtp_servers.id as smtp_id,
                         smtp_servers.name as smtp_name,
                         smtp_servers.host as smtp_host,
                         smtp_servers.is_active as smtp_is_active,
@@ -777,9 +815,15 @@ class ReportsController extends Controller
                     ->groupBy(
                         'email_queue.id',
                         'email_queue.email',
+                        'email_queue.subject',
+                        'email_queue.type',
                         'email_queue.status',
+                        'email_queue.attempts',
+                        'email_queue.from_name',
+                        'email_queue.from_email',
                         'email_queue.last_error',
                         DB::raw('COALESCE(email_queue.sent_at, email_queue.created_at)'),
+                        'smtp_servers.id',
                         'smtp_servers.name',
                         'smtp_servers.host',
                         'smtp_servers.is_active',
@@ -794,54 +838,228 @@ class ReportsController extends Controller
                         : (($row->queue_status === 'failed') ? 'not_working' : 'working');
 
                     fputcsv($handle, [
+                        $row->sent_time,
                         $row->email,
+                        $row->subject ?: 'N/A',
+                        ucfirst($row->type ?: 'N/A'),
+                        $row->smtp_id ?: 'N/A',
                         $row->smtp_name ?: 'N/A',
                         $row->smtp_host ?: 'N/A',
                         is_null($row->smtp_is_active) ? 'No' : ((int) $row->smtp_is_active === 1 ? 'Yes' : 'No'),
                         $healthStatus,
                         $row->campaign_name ?: 'N/A',
+                        $row->from_name ?: 'N/A',
+                        $row->from_email ?: 'N/A',
                         $row->queue_status,
+                        (int) ($row->attempts ?? 0),
                         $row->opened_id ? 'Yes' : 'No',
                         $row->clicked_id ? 'Yes' : 'No',
                         $row->bounced_id ? 'Yes' : 'No',
                         $row->last_error,
-                        $row->sent_time,
                     ]);
                 }
-            } else {
-                fputcsv($handle, ['Campaign', 'Recipient Email', 'Sent At', 'Opened', 'Clicked', 'Unsubscribed', 'Status']);
+            } elseif ($type === 'live-logs') {
+                $exportTypeFilter = $emailTypeFilter;
+
+                fputcsv($handle, [
+                    'Time',
+                    'Recipient',
+                    'Subject',
+                    'Type',
+                    'Campaign',
+                    'SMTP ID',
+                    'SMTP Name',
+                    'SMTP Host',
+                    'From Name',
+                    'From Email',
+                    'Status',
+                    'Attempts',
+                    'Opened',
+                    'Clicked',
+                    'Bounced',
+                    'Last Error',
+                ]);
 
                 $rows = EmailQueue::query()
                     ->leftJoin('campaigns', 'campaigns.id', '=', 'email_queue.campaign_id')
+                    ->leftJoin('smtp_servers', 'smtp_servers.id', '=', 'email_queue.smtp_server_id')
                     ->leftJoin('email_opens', 'email_opens.email_queue_id', '=', 'email_queue.id')
                     ->leftJoin('email_clicks', 'email_clicks.email_queue_id', '=', 'email_queue.id')
-                    ->leftJoin('unsubscribes', 'unsubscribes.email', '=', 'email_queue.email')
-                    ->where('campaigns.account_id', $accountId)
-                    ->where('email_queue.status', 'sent')
-                    ->whereBetween('email_queue.sent_at', [$from, $to])
+                    ->leftJoin('email_bounces', 'email_bounces.email_queue_id', '=', 'email_queue.id')
+                    ->where('email_queue.account_id', $accountId)
+                    ->whereBetween(DB::raw('COALESCE(email_queue.sent_at, email_queue.created_at)'), [$from, $to])
                     ->when($campaignId, fn ($q) => $q->where('email_queue.campaign_id', $campaignId))
+                    ->when($smtpId, fn ($q) => $q->where('email_queue.smtp_server_id', $smtpId))
+                    ->when($recipient !== '', fn ($q) => $q->where('email_queue.email', 'like', '%' . $recipient . '%'))
+                    ->when(in_array($status, ['queued', 'pending', 'sent', 'failed'], true), fn ($q) => $q->where('email_queue.status', $status))
+                    ->when(in_array($exportTypeFilter, ['campaign', 'single', 'test'], true), fn ($q) => $q->where('email_queue.type', $exportTypeFilter))
                     ->selectRaw('
-                        campaigns.name as campaign_name,
+                        COALESCE(email_queue.sent_at, email_queue.created_at) as event_time,
+                        email_queue.id,
                         email_queue.email,
-                        email_queue.sent_at,
+                        email_queue.subject,
+                        email_queue.type,
+                        email_queue.from_name,
+                        email_queue.from_email,
                         email_queue.status,
+                        email_queue.attempts,
+                        email_queue.last_error,
+                        campaigns.name as campaign_name,
+                        smtp_servers.id as smtp_id,
+                        smtp_servers.name as smtp_name,
+                        smtp_servers.host as smtp_host,
                         MAX(email_opens.id) as opened_id,
                         MAX(email_clicks.id) as clicked_id,
-                        MAX(unsubscribes.id) as unsub_id
+                        MAX(email_bounces.id) as bounced_id
                     ')
-                    ->groupBy('campaigns.name', 'email_queue.email', 'email_queue.sent_at', 'email_queue.status')
-                    ->orderByDesc('email_queue.sent_at')
+                    ->groupBy(
+                        DB::raw('COALESCE(email_queue.sent_at, email_queue.created_at)'),
+                        'email_queue.id',
+                        'email_queue.email',
+                        'email_queue.subject',
+                        'email_queue.type',
+                        'email_queue.from_name',
+                        'email_queue.from_email',
+                        'email_queue.status',
+                        'email_queue.attempts',
+                        'email_queue.last_error',
+                        'campaigns.name',
+                        'smtp_servers.id',
+                        'smtp_servers.name',
+                        'smtp_servers.host'
+                    )
+                    ->orderByDesc(DB::raw('COALESCE(email_queue.sent_at, email_queue.created_at)'))
+                    ->orderByDesc('email_queue.id')
                     ->get();
 
                 foreach ($rows as $row) {
                     fputcsv($handle, [
-                        $row->campaign_name,
+                        $row->event_time,
                         $row->email,
-                        optional($row->sent_at)->toDateTimeString(),
+                        $row->subject ?: 'N/A',
+                        ucfirst($row->type ?: 'N/A'),
+                        $row->campaign_name ?: 'N/A',
+                        $row->smtp_id ?: 'N/A',
+                        $row->smtp_name ?: 'N/A',
+                        $row->smtp_host ?: 'N/A',
+                        $row->from_name ?: 'N/A',
+                        $row->from_email ?: 'N/A',
+                        $row->status,
+                        (int) ($row->attempts ?? 0),
                         $row->opened_id ? 'Yes' : 'No',
                         $row->clicked_id ? 'Yes' : 'No',
-                        $row->unsub_id ? 'Yes' : 'No',
+                        $row->bounced_id ? 'Yes' : 'No',
+                        $row->last_error,
+                    ]);
+                }
+            } else {
+                // Campaign export — full lead details + delivery log
+                fputcsv($handle, [
+                    'Sent At',
+                    'Campaign',
+                    // Contact details
+                    'Contact Name',
+                    'Business Name',
+                    'Website',
+                    'Recipient Email',
+                    // Email details
+                    'Subject',
+                    'AB Variant',
+                    'From Name',
+                    'From Email',
+                    // SMTP details
+                    'SMTP Name',
+                    'SMTP Host',
+                    'SMTP ID',
+                    // Delivery
+                    'Status',
+                    'Attempts',
+                    'Opened',
+                    'Clicked',
+                    'Unsubscribed',
+                    'Bounced',
+                    'Last Error',
+                ]);
+
+                $rows = EmailQueue::query()
+                    ->leftJoin('campaigns',     'campaigns.id',     '=', 'email_queue.campaign_id')
+                    ->leftJoin('contacts',      'contacts.id',      '=', 'email_queue.contact_id')
+                    ->leftJoin('smtp_servers',  'smtp_servers.id',  '=', 'email_queue.smtp_server_id')
+                    ->leftJoin('email_opens',   'email_opens.email_queue_id',   '=', 'email_queue.id')
+                    ->leftJoin('email_clicks',  'email_clicks.email_queue_id',  '=', 'email_queue.id')
+                    ->leftJoin('email_bounces', 'email_bounces.email_queue_id', '=', 'email_queue.id')
+                    ->leftJoin('unsubscribes',  'unsubscribes.email',           '=', 'email_queue.email')
+                    ->where('campaigns.account_id', $accountId)
+                    ->where('email_queue.type', 'campaign')
+                    ->whereBetween(DB::raw('COALESCE(email_queue.sent_at, email_queue.created_at)'), [$from, $to])
+                    ->when($campaignId, fn ($q) => $q->where('email_queue.campaign_id', $campaignId))
+                    ->selectRaw('
+                        email_queue.id,
+                        COALESCE(email_queue.sent_at, email_queue.created_at) as sent_time,
+                        campaigns.name                  as campaign_name,
+                        contacts.name                   as contact_name,
+                        contacts.business_name          as contact_business,
+                        contacts.website                as contact_website,
+                        email_queue.email,
+                        email_queue.subject,
+                        email_queue.ab_variant,
+                        email_queue.from_name,
+                        email_queue.from_email,
+                        email_queue.status,
+                        email_queue.attempts,
+                        email_queue.last_error,
+                        smtp_servers.name               as smtp_name,
+                        smtp_servers.host               as smtp_host,
+                        smtp_servers.id                 as smtp_id,
+                        MAX(email_opens.id)             as opened_id,
+                        MAX(email_clicks.id)            as clicked_id,
+                        MAX(email_bounces.id)           as bounced_id,
+                        MAX(unsubscribes.id)            as unsub_id
+                    ')
+                    ->groupBy(
+                        'email_queue.id',
+                        DB::raw('COALESCE(email_queue.sent_at, email_queue.created_at)'),
+                        'campaigns.name',
+                        'contacts.name',
+                        'contacts.business_name',
+                        'contacts.website',
+                        'email_queue.email',
+                        'email_queue.subject',
+                        'email_queue.ab_variant',
+                        'email_queue.from_name',
+                        'email_queue.from_email',
+                        'email_queue.status',
+                        'email_queue.attempts',
+                        'email_queue.last_error',
+                        'smtp_servers.name',
+                        'smtp_servers.host',
+                        'smtp_servers.id'
+                    )
+                    ->orderByDesc(DB::raw('COALESCE(email_queue.sent_at, email_queue.created_at)'))
+                    ->get();
+
+                foreach ($rows as $row) {
+                    fputcsv($handle, [
+                        $row->sent_time,
+                        $row->campaign_name  ?: 'N/A',
+                        $row->contact_name   ?: 'N/A',
+                        $row->contact_business ?: '',
+                        $row->contact_website  ?: '',
+                        $row->email,
+                        $row->subject        ?: '',
+                        $row->ab_variant     ? strtoupper($row->ab_variant) : 'N/A',
+                        $row->from_name      ?: '',
+                        $row->from_email     ?: '',
+                        $row->smtp_name      ?: 'N/A',
+                        $row->smtp_host      ?: 'N/A',
+                        $row->smtp_id        ?: 'N/A',
                         $row->status,
+                        (int) ($row->attempts ?? 0),
+                        $row->opened_id  ? 'Yes' : 'No',
+                        $row->clicked_id ? 'Yes' : 'No',
+                        $row->unsub_id   ? 'Yes' : 'No',
+                        $row->bounced_id ? 'Yes' : 'No',
+                        $row->last_error ?: '',
                     ]);
                 }
             }

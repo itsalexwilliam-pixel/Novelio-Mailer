@@ -158,10 +158,17 @@ class SingleEmailController extends Controller
                 )
             );
 
+            // Resolve the effective from address (custom override or SMTP default)
+            // and persist it so the live logs FROM column is populated correctly.
+            $effectiveFromEmail = ($data['from_email'] ?? null) ?: $smtp->from_email;
+            $effectiveFromName  = ($data['from_name']  ?? null) ?: $smtp->from_name;
+
             $queueItem->update([
-                'status' => 'sent',
-                'sent_at' => now(),
+                'status'     => 'sent',
+                'sent_at'    => now(),
                 'last_error' => null,
+                'from_email' => $effectiveFromEmail,
+                'from_name'  => $effectiveFromName,
             ]);
 
             $smtp->update(['last_used_at' => now()]);

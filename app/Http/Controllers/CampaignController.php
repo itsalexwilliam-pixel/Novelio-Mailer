@@ -375,31 +375,49 @@ class CampaignController extends Controller
             return back()->withErrors(['campaign_test_email' => 'No active SMTP server found. Please activate an SMTP server first.']);
         }
 
+        $mergePlaceholders = [
+            '{{First Name}}', '{{Name}}', '{{Email}}', '{{Business Name}}', '{{Website}}'
+        ];
+        $mergeValues = [
+            '[First Name]', '[Name]', $data['test_email'], '[Business Name]', '[Website]'
+        ];
+
+        $testBody    = html_entity_decode($campaign->body, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $testBody    = str_replace($mergePlaceholders, $mergeValues, $testBody);
+        $testSubject = str_replace($mergePlaceholders, $mergeValues, (string) $campaign->subject);
+
+        // Create a queue log record BEFORE attempting to send
+        $queueLog = EmailQueue::create([
+            'account_id'     => $accountId,
+            'campaign_id'    => $campaign->id,
+            'contact_id'     => null,
+            'smtp_server_id' => $smtp->id,
+            'email'          => $data['test_email'],
+            'type'           => 'test',
+            'subject'        => "[TEST] {$testSubject}",
+            'body'           => $testBody,
+            'body_snapshot'  => $testBody,
+            'from_email'     => $smtp->from_email,
+            'from_name'      => $smtp->from_name,
+            'status'         => 'pending',
+            'attempts'       => 0,
+            'last_error'     => null,
+            'sent_at'        => null,
+        ]);
+
         try {
             config([
-                'mail.default' => 'smtp',
-                'mail.mailers.smtp.transport' => 'smtp',
-                'mail.mailers.smtp.host' => $smtp->host,
-                'mail.mailers.smtp.port' => $smtp->port,
-                'mail.mailers.smtp.username' => $smtp->username,
-                'mail.mailers.smtp.password' => $smtp->password,
-                'mail.mailers.smtp.encryption' => $smtp->encryption === 'none' ? null : $smtp->encryption,
-                'mail.mailers.smtp.timeout' => 8,
-                'mail.from.address' => $smtp->from_email,
-                'mail.from.name' => $smtp->from_name,
+                'mail.default'                    => 'smtp',
+                'mail.mailers.smtp.transport'     => 'smtp',
+                'mail.mailers.smtp.host'          => $smtp->host,
+                'mail.mailers.smtp.port'          => $smtp->port,
+                'mail.mailers.smtp.username'      => $smtp->username,
+                'mail.mailers.smtp.password'      => $smtp->password,
+                'mail.mailers.smtp.encryption'    => $smtp->encryption === 'none' ? null : $smtp->encryption,
+                'mail.mailers.smtp.timeout'       => 8,
+                'mail.from.address'               => $smtp->from_email,
+                'mail.from.name'                  => $smtp->from_name,
             ]);
-
-            $mergePlaceholders = [
-                '{{First Name}}', '{{Name}}', '{{Email}}', '{{Business Name}}', '{{Website}}'
-            ];
-            $mergeValues = [
-                '[First Name]', '[Name]', $data['test_email'], '[Business Name]', '[Website]'
-            ];
-
-            $testBody = html_entity_decode($campaign->body, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-            $testBody = str_replace($mergePlaceholders, $mergeValues, $testBody);
-
-            $testSubject = str_replace($mergePlaceholders, $mergeValues, (string) $campaign->subject);
 
             Mail::html($testBody, function ($message) use ($data, $testSubject, $campaign, $smtp) {
                 $message->to($data['test_email'])
@@ -413,8 +431,24 @@ class CampaignController extends Controller
                 }
             });
 
+            // Update log to sent
+            $queueLog->update([
+                'status'  => 'sent',
+                'sent_at' => now(),
+                'attempts' => 1,
+            ]);
+
+            $smtp->update(['last_used_at' => now()]);
+
             return back()->with('success', 'Test campaign email sent successfully.');
         } catch (\Throwable $e) {
+            // Update log to failed
+            $queueLog->update([
+                'status'     => 'failed',
+                'attempts'   => 1,
+                'last_error' => $e->getMessage(),
+            ]);
+
             return back()->withErrors(['campaign_test_email' => "Failed to send test campaign email: {$e->getMessage()}"]);
         }
     }

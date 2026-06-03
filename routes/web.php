@@ -119,6 +119,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/import/runs/{importRun}/progress', [ImportController::class, 'progress'])->name('import.progress');
         Route::get('/import/runs/{importRun}/status', [ImportController::class, 'status'])->name('import.status');
         Route::get('/import/runs/{importRun}/result', [ImportController::class, 'result'])->name('import.result.run');
+        Route::post('/import/runs/{importRun}/reprocess', [ImportController::class, 'reprocess'])->name('import.reprocess');
 
         // Templates
         Route::resource('templates', EmailTemplateController::class)->except(['show']);

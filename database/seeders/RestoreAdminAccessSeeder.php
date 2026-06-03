@@ -24,13 +24,13 @@ class RestoreAdminAccessSeeder extends Seeder
             ]);
         }
 
-        $user = User::query()->where('email', 'admin@example.com')->first();
+        $user = User::query()->where('email', 'admin@noveliotech.com')->first();
 
         if (! $user) {
             User::query()->create([
                 'name' => 'Admin',
-                'email' => 'admin@example.com',
-                'password' => bcrypt('password'),
+                'email' => 'admin@noveliotech.com',
+                'password' => bcrypt('Opetron11#$'),
                 'role' => 'admin',
                 'account_id' => $account->id,
             ]);
@@ -39,7 +39,7 @@ class RestoreAdminAccessSeeder extends Seeder
         }
 
         $user->name = 'Admin';
-        $user->password = bcrypt('password');
+        $user->password = bcrypt('Opetron11#$');
         $user->role = 'admin';
         $user->account_id = $account->id;
         $user->save();

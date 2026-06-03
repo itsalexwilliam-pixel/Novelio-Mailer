@@ -1,6 +1,7 @@
-- [ ] Add SendGrid PHP SDK dependency via Composer
-- [ ] Add SendGrid configuration file and env mapping
-- [ ] Implement Laravel custom SendGrid Web API mail transport
-- [ ] Register transport in service provider and mail config
-- [ ] Add sample test command for SendGrid send verification
-- [ ] Run focused tests and verify no regression in existing mail flow
+# SMTP Logging & Reporting Update TODO
+
+- [ ] Update queue worker to persist SMTP used per sent email and remove per-email gap sleep
+- [ ] Enrich ReportsController SMTP + Live Logs datasets and export payloads
+- [ ] Add Live Logs export action and detailed columns in Live Logs view
+- [ ] Add detailed SMTP recipient usage columns in SMTP Report view
+- [ ] Run focused tests for reports/single email flows

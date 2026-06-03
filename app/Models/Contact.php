@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class Contact extends Model
 {
-    protected $fillable = ['account_id', 'name', 'business_name', 'email', 'website', 'is_bounced'];
+    protected $fillable = ['account_id', 'name', 'business_name', 'email', 'website', 'phone', 'is_bounced'];
 
     protected $casts = ['is_bounced' => 'boolean'];
 

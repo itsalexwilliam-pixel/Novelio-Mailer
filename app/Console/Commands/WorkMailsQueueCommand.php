@@ -8,6 +8,7 @@ use App\Models\EmailQueue;
 use App\Models\SmtpServer;
 use App\Models\SmtpServerUsage;
 use App\Models\Unsubscribe;
+use App\Support\MergeTagReplacer;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
@@ -27,7 +28,6 @@ class WorkMailsQueueCommand extends Command
 
         $processed = 0;
         $processedPerCampaign = [];
-        $windowStartedAt = microtime(true);
 
         if (!is_null($targetCampaignId) && $targetCampaignId <= 0) {
             $this->warn('Invalid campaign_id provided. Nothing to process.');
@@ -55,7 +55,6 @@ class WorkMailsQueueCommand extends Command
 
         $campaignBuckets = $items->groupBy('campaign_id');
         $orderedBuckets = [];
-        $campaignRunCaps = [];
 
         foreach ($campaignBuckets as $campaignId => $bucket) {
             $campaign = $bucket->first()?->campaign;
@@ -68,11 +67,11 @@ class WorkMailsQueueCommand extends Command
                 if ((int) $campaign->id !== $targetCampaignId) {
                     continue;
                 }
+            }
 
-                if ((string) $campaign->status !== 'sending') {
-                    $this->line("Campaign #{$campaign->id} skipped in campaign mode: status={$campaign->status} (must be sending).");
-                    continue;
-                }
+            if ((string) $campaign->status !== 'sending') {
+                $this->line("Campaign #{$campaign->id} skipped: status={$campaign->status} (must be 'sending').");
+                continue;
             }
 
             $effectiveCap = $this->resolveEffectiveCap($campaign, $fallbackLimit);
@@ -88,7 +87,6 @@ class WorkMailsQueueCommand extends Command
             }
 
             $orderedBuckets[(int) $campaign->id] = $selected;
-            $campaignRunCaps[(int) $campaign->id] = $effectiveCap;
             $processedPerCampaign[(int) $campaign->id] = 0;
 
             $this->line("Campaign #{$campaign->id} selected={$selected->count()} effective_cap={$effectiveCap}");
@@ -107,8 +105,6 @@ class WorkMailsQueueCommand extends Command
                 $this->processQueueItem($item);
                 $processed++;
                 $processedPerCampaign[$campaignId] = ($processedPerCampaign[$campaignId] ?? 0) + 1;
-
-                $this->throttleByRate($windowStartedAt, $processedPerCampaign[$campaignId], $campaignRunCaps[$campaignId]);
             }
         } else {
             $activeCampaignIds = array_keys($orderedBuckets);
@@ -134,8 +130,6 @@ class WorkMailsQueueCommand extends Command
                     $this->processQueueItem($item);
                     $processed++;
                     $processedPerCampaign[$campaignId] = ($processedPerCampaign[$campaignId] ?? 0) + 1;
-
-                    $this->throttleByRate($windowStartedAt, $processedPerCampaign[$campaignId], $campaignRunCaps[$campaignId]);
                 }
             }
         }
@@ -214,21 +208,6 @@ class WorkMailsQueueCommand extends Command
         }
 
         return max(0, (int) $effective);
-    }
-
-    private function throttleByRate(float $windowStartedAt, int $processedInWindow, int $emailsPerMinute): void
-    {
-        if ($emailsPerMinute <= 0 || $processedInWindow <= 0) {
-            return;
-        }
-
-        $expectedSeconds = ($processedInWindow / $emailsPerMinute) * 60;
-        $elapsedSeconds = microtime(true) - $windowStartedAt;
-        $sleepSeconds = $expectedSeconds - $elapsedSeconds;
-
-        if ($sleepSeconds > 0) {
-            usleep((int) round($sleepSeconds * 1000000));
-        }
     }
 
     private function processQueueItem(EmailQueue $item): bool
@@ -332,13 +311,40 @@ class WorkMailsQueueCommand extends Command
                 'mail.from.name' => $smtp->from_name,
             ]);
 
+            // Purge cached mailer so the updated config above is picked up for every send.
+            // Without this, Laravel reuses the transport instance from the very first email
+            // for all subsequent sends, causing wrong SMTP credentials or stale connections.
+            Mail::purge('smtp');
+
             try {
-                Mail::to($item->email)->send(new CampaignMail($item->campaign, $item->contact, $item->id, $item->ab_variant));
+                // Pass the body and subject directly from the queue item.
+                // The queue item already has the correct A/B-selected body/subject captured
+                // at queue time, so we don't rely on $campaign->body which may be null or
+                // have changed since queueing.
+                $queueBody    = (string) ($item->body_snapshot ?: $item->body ?: $item->campaign?->body ?: '');
+                $queueSubject = (string) ($item->subject ?: $item->campaign?->subject ?: '');
+
+                Mail::to($item->email)->send(new CampaignMail(
+                    $item->campaign,
+                    $item->contact,
+                    $item->id,
+                    $item->ab_variant,
+                    $queueBody,
+                    $queueSubject,
+                ));
+
+                $renderedSubject = MergeTagReplacer::replace((string) ($item->subject ?? ''), $item->contact);
+                $renderedBody    = MergeTagReplacer::replace((string) ($item->body_snapshot ?: $item->body ?? ''), $item->contact);
 
                 $item->update([
-                    'status' => 'sent',
-                    'sent_at' => Carbon::now(),
-                    'last_error' => null,
+                    'status'          => 'sent',
+                    'sent_at'         => Carbon::now(),
+                    'last_error'      => null,
+                    'smtp_server_id'  => $smtp->id,
+                    'from_email'      => $smtp->from_email,
+                    'from_name'       => $smtp->from_name,
+                    'subject'         => $renderedSubject,
+                    'body_snapshot'   => $renderedBody,
                 ]);
 
                 $smtp->update(['last_used_at' => Carbon::now()]);
@@ -370,10 +376,6 @@ class WorkMailsQueueCommand extends Command
 
                 $this->info("Sent successfully: {$item->email}");
                 $sent = true;
-
-                // Per-campaign pacing: use configured gap (seconds), fallback to 10 seconds
-                $gapSeconds = max(1, (int) ($item->campaign?->email_gap_seconds ?? 10));
-                sleep($gapSeconds);
 
                 break;
             } catch (\Throwable $e) {

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\EmailQueue;
 use App\Models\SmtpServer;
 use App\Models\SmtpServerUsage;
 use Carbon\Carbon;
@@ -171,12 +172,37 @@ class SMTPController extends Controller
             'test_email' => ['required', 'email'],
         ]);
 
+        $accountId   = (int) $smtp->account_id;
+        $testSubject = "Test Email - SMTP Configuration [{$smtp->name}]";
+        $testBody    = "<p>This is a test email from SMTP server: <strong>{$smtp->name}</strong></p>"
+                     . "<p><strong>Host:</strong> {$smtp->host}:{$smtp->port}<br>"
+                     . "<strong>From:</strong> {$smtp->from_name} &lt;{$smtp->from_email}&gt;</p>";
+
+        // Log to email_queue BEFORE sending
+        $queueLog = EmailQueue::create([
+            'account_id'     => $accountId,
+            'campaign_id'    => null,
+            'contact_id'     => null,
+            'smtp_server_id' => $smtp->id,
+            'email'          => $data['test_email'],
+            'type'           => 'test',
+            'subject'        => $testSubject,
+            'body'           => $testBody,
+            'body_snapshot'  => $testBody,
+            'from_email'     => $smtp->from_email,
+            'from_name'      => $smtp->from_name,
+            'status'         => 'pending',
+            'attempts'       => 0,
+            'last_error'     => null,
+            'sent_at'        => null,
+        ]);
+
         try {
             $this->applySmtpConfig($smtp);
 
-            Mail::raw("This is a test email from SMTP server: {$smtp->name}", function ($message) use ($smtp, $data) {
+            Mail::raw("This is a test email from SMTP server: {$smtp->name}", function ($message) use ($smtp, $data, $testSubject) {
                 $message->to($data['test_email'])
-                    ->subject('Test Email - SMTP Configuration')
+                    ->subject($testSubject)
                     ->from($smtp->from_email, $smtp->from_name);
 
                 if (!empty($smtp->reply_to_email)) {
@@ -184,13 +210,29 @@ class SMTPController extends Controller
                 }
             });
 
+            // Update log on success
+            $queueLog->update([
+                'status'  => 'sent',
+                'sent_at' => now(),
+                'attempts' => 1,
+            ]);
+
+            $smtp->update(['last_used_at' => now()]);
+
             return back()->with('success', "Test email sent successfully via {$smtp->name}.");
         } catch (\Throwable $e) {
+            // Update log on failure
+            $queueLog->update([
+                'status'     => 'failed',
+                'attempts'   => 1,
+                'last_error' => $e->getMessage(),
+            ]);
+
             Log::warning('SMTP send test email failed', [
-                'smtp_id' => $smtp->id,
-                'account_id' => $smtp->account_id,
+                'smtp_id'    => $smtp->id,
+                'account_id' => $accountId,
                 'error_type' => class_basename($e),
-                'error' => $e->getMessage(),
+                'error'      => $e->getMessage(),
             ]);
 
             return back()->withErrors([

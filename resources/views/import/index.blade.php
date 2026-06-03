@@ -73,16 +73,21 @@
                     <input type="text" name="website_column" value="{{ old('website_column', 'website') }}"
                            class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                 </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">Phone Column Header <span class="text-slate-400 text-xs font-normal">(optional)</span></label>
+                    <input type="text" name="phone_column" value="{{ old('phone_column', 'phone') }}"
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
             </div>
 
             <div class="rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/70 dark:bg-indigo-950/30 px-4 py-3 text-sm text-indigo-800 dark:text-indigo-200">
                 Contacts will be added to selected <span class="font-semibold">Lists (Groups)</span>.
                 <div class="mt-1 text-xs space-y-0.5">
                     <div>CSV format example (single name):
-                        <code class="px-1.5 py-0.5 rounded bg-white/70 dark:bg-slate-900/70">name,email,company,website</code>
+                        <code class="px-1.5 py-0.5 rounded bg-white/70 dark:bg-slate-900/70">name,email,phone,company,website</code>
                     </div>
                     <div>CSV format example (split name):
-                        <code class="px-1.5 py-0.5 rounded bg-white/70 dark:bg-slate-900/70">first_name,last_name,email,company,website</code>
+                        <code class="px-1.5 py-0.5 rounded bg-white/70 dark:bg-slate-900/70">first_name,last_name,email,phone,company,website</code>
                     </div>
                 </div>
             </div>

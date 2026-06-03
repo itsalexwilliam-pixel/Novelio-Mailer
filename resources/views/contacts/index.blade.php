@@ -106,6 +106,7 @@
                         <th class="py-3 px-4">Name</th>
                         <th class="py-3 px-4">Business Name</th>
                         <th class="py-3 px-4">Email</th>
+                        <th class="py-3 px-4">Phone</th>
                         <th class="py-3 px-4">Website</th>
                         <th class="py-3 px-4">Groups</th>
                         <th class="py-3 px-4">Tags</th>
@@ -127,6 +128,13 @@
                             </td>
                             <td class="py-3 px-4 text-slate-600 dark:text-slate-300">{{ $contact->business_name ?: '—' }}</td>
                             <td class="py-3 px-4 text-slate-600 dark:text-slate-300 contact-email">{{ $contact->email }}</td>
+                            <td class="py-3 px-4 text-slate-600 dark:text-slate-300">
+                                @if ($contact->phone)
+                                    <a href="tel:{{ $contact->phone }}" class="hover:text-indigo-600 dark:hover:text-indigo-400 transition">{{ $contact->phone }}</a>
+                                @else
+                                    —
+                                @endif
+                            </td>
                             <td class="py-3 px-4 text-slate-600 dark:text-slate-300">
                                 @if ($contact->website)
                                     <a href="{{ $contact->website }}" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 underline">
@@ -221,7 +229,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="9" class="py-8 text-center text-slate-500">No contacts found.</td>
+                            <td colspan="10" class="py-8 text-center text-slate-500">No contacts found.</td>
                         </tr>
                     @endforelse
                 </tbody>

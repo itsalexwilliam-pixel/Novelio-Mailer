@@ -16,6 +16,7 @@ class MergeTagReplacer
         $email = trim((string) ($contact?->email ?? ''));
         $businessName = trim((string) ($contact?->business_name ?? ''));
         $website = trim((string) ($contact?->website ?? ''));
+        $phone = trim((string) ($contact?->phone ?? ''));
 
         [$firstName, $lastName] = self::splitName($name);
 
@@ -29,6 +30,8 @@ class MergeTagReplacer
             'email' => $email,
             'business_name' => $businessName,
             'website' => $website,
+            'phone' => $phone,
+            'phone_number' => $phone,
             'current_date' => $currentDate,
         ];
 
@@ -99,6 +102,7 @@ class MergeTagReplacer
         $normalized = str_replace(['lastname', 'last name'], 'last_name', $normalized);
         $normalized = str_replace(['businessname', 'business name'], 'business_name', $normalized);
         $normalized = str_replace(['currentdate', 'current date'], 'current_date', $normalized);
+        $normalized = str_replace(['phonenumber', 'phone number'], 'phone_number', $normalized);
 
         return $normalized;
     }

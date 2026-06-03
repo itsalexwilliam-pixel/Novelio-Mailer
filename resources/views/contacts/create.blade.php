@@ -47,6 +47,12 @@
                     <input type="url" name="website" value="{{ old('website') }}" placeholder="https://example.com"
                            class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                 </div>
+
+                <div>
+                    <label class="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">Phone Number <span class="text-slate-400 text-xs font-normal">(optional)</span></label>
+                    <input type="text" name="phone" value="{{ old('phone') }}" placeholder="+1 555-000-0000"
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
             </div>
 
             <div>

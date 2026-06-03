@@ -107,21 +107,25 @@ class SingleEmailMail extends Mailable
 
         try {
             $sanitized = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $html) ?? $html;
+
+            // Resolve CSS custom properties (variables) BEFORE inlining so that
+            // CssToInlineStyles gets actual values instead of unresolvable var() references.
+            $sanitized = $this->resolveCssVariables($sanitized);
+
             $inliner = new CssToInlineStyles();
             $inlined = $inliner->convert($sanitized);
+
+            if (trim($inlined) === '') {
+                return $html;
+            }
+
             $inlined = $this->sanitizeUnsupportedInlineCss($inlined);
 
-            // Basic fallbacks for clients that ignore class-based layout/CSS variables.
-            $inlined = preg_replace(
-                '/<body([^>]*)>/i',
-                '<body$1 style="margin:0;padding:24px 14px 60px;background:#F5F2F8;color:#18182A;font-family:Arial,Helvetica,sans-serif;line-height:1.6;">',
-                $inlined,
-                1
-            ) ?? $inlined;
-
-            Log::info('Inline HTML sample', [
-                'preview' => substr($inlined, 0, 1000),
-            ]);
+            // Replace the body tag's style completely (avoids duplicate style attributes).
+            $inlined = preg_replace_callback('/<body([^>]*)>/i', static function (array $m): string {
+                $attrs = preg_replace('/\s*style\s*=\s*"[^"]*"/i', '', $m[1]) ?? $m[1];
+                return '<body' . $attrs . ' style="margin:0;padding:24px 14px 60px;background:#ffffff;color:#18182A;font-family:Arial,Helvetica,sans-serif;line-height:1.6;">';
+            }, $inlined, 1) ?? $inlined;
 
             return $inlined;
         } catch (\Throwable) {
@@ -134,13 +138,53 @@ class SingleEmailMail extends Mailable
         return preg_replace_callback('/style\s*=\s*"([^"]*)"/i', function (array $matches): string {
             $style = $matches[1];
 
-            $filtered = preg_replace('/\bdisplay\s*:\s*(flex|grid)\s*;?/i', '', $style) ?? $style;
+            $filtered = preg_replace('/\bdisplay\s*:\s*(flex|grid|none)\s*;?/i', '', $style) ?? $style;
+            $filtered = preg_replace('/\bvisibility\s*:\s*hidden\s*;?/i', '', $filtered) ?? $filtered;
+            $filtered = preg_replace('/\bopacity\s*:\s*0\s*;?/i', '', $filtered) ?? $filtered;
+            $filtered = preg_replace('/\bmax-height\s*:\s*0[^;]*;?/i', '', $filtered) ?? $filtered;
             $filtered = preg_replace('/\bposition\s*:\s*[^;"]+;?/i', '', $filtered) ?? $filtered;
+            // Strip any remaining unresolved var() references (fallback safety).
             $filtered = preg_replace('/\b[a-z-]+\s*:\s*var\([^)]+\)\s*;?/i', '', $filtered) ?? $filtered;
             $filtered = preg_replace('/\s{2,}/', ' ', trim($filtered)) ?? trim($filtered);
             $filtered = trim($filtered, " ;");
 
             return $filtered === '' ? '' : 'style="'.$filtered.'"';
+        }, $html) ?? $html;
+    }
+
+    private function resolveCssVariables(string $html): string
+    {
+        $vars = [];
+
+        // Extract from :root {} / html {} blocks inside <style> elements.
+        preg_match_all('/<style[^>]*>(.*?)<\/style>/is', $html, $styleMatches);
+        foreach ($styleMatches[1] as $styleContent) {
+            if (preg_match_all('/:root\s*\{([^}]+)\}|html\s*\{([^}]+)\}/i', $styleContent, $rootMatches)) {
+                foreach ($rootMatches[0] as $block) {
+                    preg_match_all('/(--[\w-]+)\s*:\s*([^;}\n]+)/i', $block, $varMatches, PREG_SET_ORDER);
+                    foreach ($varMatches as $m) {
+                        $vars[trim($m[1])] = trim($m[2]);
+                    }
+                }
+            }
+        }
+
+        // Also extract from inline style on <html> element.
+        if (preg_match('/<html[^>]+style="([^"]+)"/i', $html, $htmlStyleMatch)) {
+            preg_match_all('/(--[\w-]+)\s*:\s*([^;,"]+)/i', $htmlStyleMatch[1], $varMatches, PREG_SET_ORDER);
+            foreach ($varMatches as $m) {
+                $vars[trim($m[1])] = trim($m[2]);
+            }
+        }
+
+        if (empty($vars)) {
+            return $html;
+        }
+
+        return preg_replace_callback('/var\((--[\w-]+)(?:\s*,\s*([^)]+))?\)/i', function (array $m) use ($vars): string {
+            $varName  = $m[1];
+            $fallback = isset($m[2]) ? trim($m[2]) : null;
+            return $vars[$varName] ?? $fallback ?? 'initial';
         }, $html) ?? $html;
     }
 

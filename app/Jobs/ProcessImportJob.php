@@ -6,6 +6,7 @@ use App\Models\Contact;
 use App\Models\ImportRun;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 
 class ProcessImportJob implements ShouldQueue
@@ -35,26 +36,7 @@ class ProcessImportJob implements ShouldQueue
         $relativePath = str_replace('\\', '/', $relativePath);
         $relativePath = ltrim($relativePath, '/');
 
-        $candidatePaths = [
-            storage_path('app/' . $relativePath),
-            storage_path('app/private/' . $relativePath),
-            storage_path('app\\' . str_replace('/', '\\', $relativePath)),
-            storage_path('app\\private\\' . str_replace('/', '\\', $relativePath)),
-            base_path('storage/app/' . $relativePath),
-            base_path('storage/app/private/' . $relativePath),
-            base_path('storage\\app\\' . str_replace('/', '\\', $relativePath)),
-            base_path('storage\\app\\private\\' . str_replace('/', '\\', $relativePath)),
-        ];
-
-        $absolutePath = null;
-        foreach ($candidatePaths as $candidatePath) {
-            if (is_file($candidatePath)) {
-                $absolutePath = $candidatePath;
-                break;
-            }
-        }
-
-        if (!$absolutePath) {
+        if (! Storage::disk('local')->exists($relativePath)) {
             $importRun->update([
                 'status' => 'failed',
                 'error_message' => 'Uploaded CSV file not found. Path: ' . $relativePath,
@@ -62,6 +44,8 @@ class ProcessImportJob implements ShouldQueue
             ]);
             return;
         }
+
+        $absolutePath = Storage::disk('local')->path($relativePath);
 
         $handle = fopen($absolutePath, 'r');
         if (!$handle) {
@@ -94,6 +78,7 @@ class ProcessImportJob implements ShouldQueue
             $emailCol = trim((string) ($importRun->email_column ?? 'email'));
             $businessNameCol = trim((string) ($importRun->business_name_column ?? ''));
             $websiteCol = trim((string) ($importRun->website_column ?? ''));
+            $phoneCol = trim((string) ($importRun->phone_column ?? ''));
 
             $nameIndex = $nameCol !== '' ? array_search($nameCol, $headers, true) : false;
             $firstNameIndex = $firstNameCol !== '' ? array_search($firstNameCol, $headers, true) : false;
@@ -101,6 +86,7 @@ class ProcessImportJob implements ShouldQueue
             $emailIndex = array_search($emailCol, $headers, true);
             $businessNameIndex = $businessNameCol !== '' ? array_search($businessNameCol, $headers, true) : false;
             $websiteIndex = $websiteCol !== '' ? array_search($websiteCol, $headers, true) : false;
+            $phoneIndex = $phoneCol !== '' ? array_search($phoneCol, $headers, true) : false;
 
             $hasName = $nameIndex !== false;
             $hasFirstName = $firstNameIndex !== false;
@@ -170,6 +156,7 @@ class ProcessImportJob implements ShouldQueue
                 $email = strtolower(trim((string) ($row[$emailIndex] ?? '')));
                 $businessName = $businessNameIndex !== false ? trim((string) ($row[$businessNameIndex] ?? '')) : null;
                 $website = $websiteIndex !== false ? trim((string) ($row[$websiteIndex] ?? '')) : null;
+                $phone = $phoneIndex !== false ? trim((string) ($row[$phoneIndex] ?? '')) : null;
 
                 if ($website && !preg_match('/^https?:\/\//i', $website)) {
                     $website = 'https://' . $website;
@@ -217,6 +204,7 @@ class ProcessImportJob implements ShouldQueue
                         'business_name' => $businessName ?: null,
                         'email' => $email,
                         'website' => $website ?: null,
+                        'phone' => $phone ?: null,
                     ]);
 
                     if (!empty($groupIds)) {

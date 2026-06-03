@@ -30,6 +30,7 @@ class ImportController extends Controller
             'email_column'         => ['required', 'string'],
             'business_name_column' => ['nullable', 'string'],
             'website_column'       => ['nullable', 'string'],
+            'phone_column'         => ['nullable', 'string'],
             'groups'               => ['nullable', 'array'],
             'groups.*'             => ['integer', 'exists:groups,id'],
         ]);
@@ -48,14 +49,15 @@ class ImportController extends Controller
             'email_column' => trim((string) $request->email_column),
             'business_name_column' => trim((string) $request->business_name_column),
             'website_column' => trim((string) $request->website_column),
+            'phone_column' => trim((string) $request->phone_column),
             'group_ids' => array_values(array_map('intval', $request->groups ?? [])),
         ]);
 
-        ProcessImportJob::dispatch($importRun->id);
+        ProcessImportJob::dispatchSync($importRun->id);
 
         return redirect()
             ->route('import.progress', $importRun)
-            ->with('success', 'Import started. Processing in background.');
+            ->with('success', 'Import completed successfully.');
     }
 
     public function progress(Request $request, ImportRun $importRun)
@@ -96,6 +98,32 @@ class ImportController extends Controller
             'skipped' => (int) $importRun->skipped_rows,
             'failedRows' => $importRun->failed_rows ?? [],
         ]);
+    }
+
+    public function reprocess(Request $request, ImportRun $importRun)
+    {
+        $this->authorizeImportRun($request, $importRun);
+
+        if (!in_array($importRun->status, ['queued', 'failed'], true)) {
+            return redirect()->route('import.progress', $importRun)
+                ->withErrors(['reprocess' => 'Only queued or failed imports can be reprocessed.']);
+        }
+
+        $importRun->update([
+            'status' => 'queued',
+            'error_message' => null,
+            'started_at' => null,
+            'finished_at' => null,
+            'processed_rows' => 0,
+            'imported_rows' => 0,
+            'skipped_rows' => 0,
+            'failed_rows' => [],
+        ]);
+
+        ProcessImportJob::dispatchSync($importRun->id);
+
+        return redirect()->route('import.progress', $importRun)
+            ->with('success', 'Import reprocessed successfully.');
     }
 
     private function authorizeImportRun(Request $request, ImportRun $importRun): void

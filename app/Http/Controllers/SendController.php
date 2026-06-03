@@ -56,16 +56,27 @@ class SendController extends Controller
 
             if ($queue->wasRecentlyCreated) {
                 $inserted++;
+            } elseif ($queue->status === 'pending') {
+                // Always refresh the body/subject snapshot for pending items so that
+                // editing the campaign template and clicking Send Now again picks up
+                // the latest content instead of the stale captured snapshot.
+                $queue->update([
+                    'account_id'    => $accountId,
+                    'ab_variant'    => $abVariant,
+                    'subject'       => $subject,
+                    'body'          => $body,
+                    'body_snapshot' => $body,
+                ]);
             } elseif (in_array($queue->status, ['failed', 'paused'], true) && (int) $queue->attempts < 3) {
                 $queue->update([
-                    'account_id' => $accountId,
-                    'type' => 'campaign',
-                    'ab_variant' => $abVariant,
-                    'subject' => $subject,
-                    'body' => $body,
+                    'account_id'    => $accountId,
+                    'type'          => 'campaign',
+                    'ab_variant'    => $abVariant,
+                    'subject'       => $subject,
+                    'body'          => $body,
                     'body_snapshot' => $body,
-                    'status' => 'pending',
-                    'last_error' => null,
+                    'status'        => 'pending',
+                    'last_error'    => null,
                 ]);
             }
 
@@ -88,7 +99,7 @@ class SendController extends Controller
 
         $workerTriggered = false;
         if ($hasSendableQueue) {
-            ProcessCampaignQueueJob::dispatch($campaign->id);
+            ProcessCampaignQueueJob::dispatchSync($campaign->id);
             $workerTriggered = true;
         }
 
@@ -137,9 +148,9 @@ class SendController extends Controller
 
         $campaign->update(['status' => 'sending']);
 
-        // Dispatch the background worker so emails actually start sending again.
-        ProcessCampaignQueueJob::dispatch($campaign->id);
+        // Run the worker synchronously so emails start sending immediately.
+        ProcessCampaignQueueJob::dispatchSync($campaign->id);
 
-        return redirect()->route('campaigns.index')->with('success', 'Campaign resumed successfully. Background worker triggered.');
+        return redirect()->route('campaigns.index')->with('success', 'Campaign resumed successfully.');
     }
 }

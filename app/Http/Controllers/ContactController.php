@@ -56,6 +56,7 @@ class ContactController extends Controller
             'business_name' => ['nullable', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:contacts,email'],
             'website' => ['nullable', 'url', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:50'],
             'groups' => ['nullable', 'array'],
             'groups.*' => ['exists:groups,id'],
         ]);
@@ -68,6 +69,7 @@ class ContactController extends Controller
             'business_name' => $data['business_name'] ?? null,
             'email' => $data['email'],
             'website' => $data['website'] ?? null,
+            'phone' => $data['phone'] ?? null,
         ]);
 
         $contact->groups()->sync($data['groups'] ?? []);
@@ -95,6 +97,7 @@ class ContactController extends Controller
                 Rule::unique('contacts', 'email')->ignore($contact->id),
             ],
             'website' => ['nullable', 'url', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:50'],
             'groups' => ['nullable', 'array'],
             'groups.*' => ['exists:groups,id'],
         ]);
@@ -105,6 +108,7 @@ class ContactController extends Controller
             'business_name' => $data['business_name'] ?? null,
             'email' => $data['email'],
             'website' => $data['website'] ?? null,
+            'phone' => $data['phone'] ?? null,
         ]);
 
         $contact->groups()->sync($data['groups'] ?? []);
@@ -225,12 +229,13 @@ class ContactController extends Controller
             fputs($handle, "\xEF\xBB\xBF");
 
             // Header row
-            fputcsv($handle, ['Name', 'Email', 'Business Name', 'Website', 'Groups', 'Tags', 'Is Bounced', 'Created At']);
+            fputcsv($handle, ['Name', 'Email', 'Phone', 'Business Name', 'Website', 'Groups', 'Tags', 'Is Bounced', 'Created At']);
 
             foreach ($contacts as $contact) {
                 fputcsv($handle, [
                     $contact->name ?? '',
                     $contact->email ?? '',
+                    $contact->phone ?? '',
                     $contact->business_name ?? '',
                     $contact->website ?? '',
                     $contact->groups->pluck('name')->implode(', '),
