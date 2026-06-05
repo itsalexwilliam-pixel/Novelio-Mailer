@@ -256,10 +256,7 @@
                     <select id="manualContactIdsSelect" name="contact_ids[]" multiple size="8"
                             class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                         @foreach($contacts as $contact)
-                            <option value="{{ $contact->id }}" @selected(collect(old('contact_ids', $selectedContactIds ?? []))->contains($contact->id))
-                                    data-contact-name="{{ $contact->name }}"
-                                    data-contact-email="{{ $contact->email }}"
-                                    data-group-ids="{{ $contact->groups->pluck('id')->implode(',') }}">
+                            <option value="{{ $contact->id }}" @selected(collect(old('contact_ids', $selectedContactIds ?? []))->contains($contact->id))>
                                 {{ $contact->name }} ({{ $contact->email }})
                             </option>
                         @endforeach
@@ -300,18 +297,6 @@
     </div>
 </div>
 @endsection
-
-@php
-    $contactGroupData = $groupContacts->map(function ($contact) {
-        return [
-            'name' => $contact->name,
-            'email' => $contact->email,
-            'group_ids' => $contact->groups->pluck('id')->map(function ($id) {
-                return (string) $id;
-            })->values()->all(),
-        ];
-    });
-@endphp
 
 {{-- Template Picker Modal (must be in DOM before the script runs) --}}
 <div id="tplModal" class="fixed inset-0 bg-black/60 hidden items-center justify-center z-50 p-4">
@@ -471,7 +456,6 @@
     const groupSelectionSummary = document.getElementById('groupSelectionSummary');
     const groupMembersPreview = document.getElementById('groupMembersPreview');
     const manualContactIdsSelect = document.getElementById('manualContactIdsSelect');
-    const contactGroupData = @json($contactGroupData);
 
     previewBtn?.addEventListener('click', function () {
         const html = htmlEditor.classList.contains('hidden') ? quill.root.innerHTML : htmlEditor.value;
@@ -524,31 +508,19 @@
             return;
         }
 
-        const selectedGroupIds = new Set(
-            Array.from(groupIdsSelect.selectedOptions).map((opt) => String(opt.value))
-        );
+        const selectedOptions = Array.from(groupIdsSelect.options).filter((opt) => opt.selected);
 
-        if (selectedGroupIds.size === 0) {
+        if (selectedOptions.length === 0) {
             groupMembersPreview.textContent = 'Select one or more groups to see member preview.';
             return;
         }
 
-        const memberLines = [];
-        contactGroupData.forEach((contact) => {
-            const isInSelectedGroup = contact.group_ids.some((gid) => selectedGroupIds.has(String(gid)));
-            if (isInSelectedGroup) {
-                memberLines.push(`${contact.name} (${contact.email})`);
-            }
-        });
-
-        if (memberLines.length === 0) {
-            groupMembersPreview.textContent = 'No contacts found in selected groups.';
-            return;
-        }
-
-        groupMembersPreview.innerHTML = memberLines
-            .map((line) => `<div class="py-0.5">${line}</div>`)
-            .join('');
+        groupMembersPreview.innerHTML = `
+            <div class="mb-2 text-[11px] text-slate-500 dark:text-slate-400">
+                Selected ${selectedOptions.length} list(s). Recipients will be resolved from these selected lists at send time (deduplicated).
+            </div>
+            ${selectedOptions.map((opt) => `<div class="py-0.5">${opt.textContent.trim()}</div>`).join('')}
+        `;
     }
 
     groupIdsSelect?.addEventListener('change', updateGroupSelectionState);

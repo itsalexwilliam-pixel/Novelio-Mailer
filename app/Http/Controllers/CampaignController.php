@@ -205,14 +205,6 @@ class CampaignController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'email']);
 
-        $groupContacts = Contact::query()
-            ->whereHas('groups', function ($query) use ($accountId) {
-                $query->where('groups.account_id', $accountId);
-            })
-            ->with('groups')
-            ->orderBy('name')
-            ->get(['contacts.id', 'contacts.name', 'contacts.email']);
-
         // withCount avoids N+1 queries in the blade loop ($group->contacts_count)
         $groups = Group::query()->where('account_id', $accountId)->withCount('contacts')->orderBy('name')->get();
 
@@ -228,7 +220,6 @@ class CampaignController extends Controller
         return view('campaigns.edit', compact(
             'campaign',
             'contacts',
-            'groupContacts',
             'groups',
             'selectedContactIds',
             'selectedGroupIds',
