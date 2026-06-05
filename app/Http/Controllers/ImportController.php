@@ -53,11 +53,11 @@ class ImportController extends Controller
             'group_ids' => array_values(array_map('intval', $request->groups ?? [])),
         ]);
 
-        ProcessImportJob::dispatchSync($importRun->id);
+        ProcessImportJob::dispatch($importRun->id);
 
         return redirect()
             ->route('import.progress', $importRun)
-            ->with('success', 'Import completed successfully.');
+            ->with('success', 'Import queued! Processing in background — progress updates below.');
     }
 
     public function progress(Request $request, ImportRun $importRun)
@@ -120,10 +120,10 @@ class ImportController extends Controller
             'failed_rows' => [],
         ]);
 
-        ProcessImportJob::dispatchSync($importRun->id);
+        ProcessImportJob::dispatch($importRun->id);
 
         return redirect()->route('import.progress', $importRun)
-            ->with('success', 'Import reprocessed successfully.');
+            ->with('success', 'Import re-queued! Processing in background — progress updates below.');
     }
 
     private function authorizeImportRun(Request $request, ImportRun $importRun): void

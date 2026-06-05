@@ -46,7 +46,12 @@
             <span class="font-medium">Status:</span> <span id="statusText">{{ $importRun->status }}</span>
         </div>
 
-        <div id="errorBox" class="hidden mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700"></div>
+        <div id="queuedNotice" class="{{ in_array($importRun->status, ['queued']) ? '' : 'hidden' }} mt-4 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-200 flex items-center gap-2">
+            <svg class="w-4 h-4 shrink-0 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
+            Waiting in queue… The background worker will start processing shortly.
+        </div>
+
+        <div id="errorBox" class="hidden mt-4 rounded-xl border border-rose-200 bg-rose-50 dark:bg-rose-950/30 dark:border-rose-800 p-3 text-sm text-rose-700 dark:text-rose-300"></div>
     </div>
 
     <div class="flex items-center gap-3">
@@ -55,8 +60,8 @@
             Back to Import
         </a>
 
-        @if (in_array($importRun->status, ['queued', 'failed']))
-        <form id="retryForm" method="POST" action="{{ route('import.reprocess', $importRun) }}">
+        {{-- Only shown by JS after a 'failed' status is received --}}
+        <form id="retryForm" method="POST" action="{{ route('import.reprocess', $importRun) }}" class="hidden">
             @csrf
             <button type="submit"
                     class="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition">
@@ -66,7 +71,6 @@
                 Reprocess Now
             </button>
         </form>
-        @endif
 
         <a id="resultLink" href="{{ route('import.result.run', $importRun) }}"
            class="hidden inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition">
@@ -90,6 +94,8 @@
     const skippedRows = document.getElementById('skippedRows');
     const statusText = document.getElementById('statusText');
     const errorBox = document.getElementById('errorBox');
+    const queuedNotice = document.getElementById('queuedNotice');
+    const retryForm = document.getElementById('retryForm');
 
     let done = false;
 
@@ -116,12 +122,19 @@
             skippedRows.textContent = String(data.skipped ?? 0);
             statusText.textContent = String(data.status ?? 'queued');
 
+            // Hide "waiting in queue" notice once processing starts
+            if (data.status !== 'queued' && queuedNotice) {
+                queuedNotice.classList.add('hidden');
+            }
+
             if (data.status === 'failed') {
                 done = true;
                 errorBox.classList.remove('hidden');
                 errorBox.textContent = data.error_message || 'Import failed due to an unexpected error.';
                 resultLink.classList.remove('hidden');
                 resultLink.href = data.result_url;
+                // Show reprocess button on failure
+                if (retryForm) retryForm.classList.remove('hidden');
                 return;
             }
 
