@@ -227,8 +227,8 @@
                     @foreach($groups as $group)
                         <option value="{{ $group->id }}"
                                 @selected(collect(old('group_ids', $selectedGroupIds ?? []))->contains($group->id))
-                                data-count="{{ $group->contacts()->count() }}">
-                            {{ $group->name }} ({{ $group->contacts()->count() }} contacts)
+                                data-count="{{ $group->contacts_count }}">
+                            {{ $group->name }} ({{ $group->contacts_count }} contacts)
                         </option>
                     @endforeach
                 </select>

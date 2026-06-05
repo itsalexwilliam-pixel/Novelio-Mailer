@@ -111,7 +111,8 @@ class CampaignController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'email']);
 
-        $groups = Group::query()->where('account_id', $accountId)->orderBy('name')->get();
+        // withCount avoids N+1 queries in the blade loop ($group->contacts_count)
+        $groups = Group::query()->where('account_id', $accountId)->withCount('contacts')->orderBy('name')->get();
 
         $warmupSchedule = Campaign::WARMUP_SCHEDULE;
 
@@ -212,7 +213,8 @@ class CampaignController extends Controller
             ->orderBy('name')
             ->get(['contacts.id', 'contacts.name', 'contacts.email']);
 
-        $groups = Group::query()->where('account_id', $accountId)->orderBy('name')->get();
+        // withCount avoids N+1 queries in the blade loop ($group->contacts_count)
+        $groups = Group::query()->where('account_id', $accountId)->withCount('contacts')->orderBy('name')->get();
 
         $selectedContactIds = $campaign->contacts()
             ->where('contacts.account_id', $accountId)
