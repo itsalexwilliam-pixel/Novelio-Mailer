@@ -298,18 +298,6 @@
 </div>
 @endsection
 
-@php
-    $contactGroupData = $groupContacts->map(function ($contact) {
-        return [
-            'name' => $contact->name,
-            'email' => $contact->email,
-            'group_ids' => $contact->groups->pluck('id')->map(function ($id) {
-                return (string) $id;
-            })->values()->all(),
-        ];
-    });
-@endphp
-
 {{-- Template Picker Modal (must be in DOM before the script runs) --}}
 <div id="tplModal" class="fixed inset-0 bg-black/60 hidden items-center justify-center z-50 p-4">
     <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">

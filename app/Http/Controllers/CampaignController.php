@@ -105,19 +105,17 @@ class CampaignController extends Controller
     {
         $accountId = $this->currentAccountId();
 
-        $contacts = Contact::query()->where('account_id', $accountId)->with('groups')->orderBy('name')->get();
-        $groupContacts = Contact::query()
-            ->whereHas('groups', function ($query) use ($accountId) {
-                $query->where('groups.account_id', $accountId);
-            })
-            ->with('groups')
+        // Only fetch columns needed for the contacts dropdown — avoids OOM on large lists
+        $contacts = Contact::query()
+            ->where('account_id', $accountId)
             ->orderBy('name')
-            ->get();
+            ->get(['id', 'name', 'email']);
+
         $groups = Group::query()->where('account_id', $accountId)->orderBy('name')->get();
 
         $warmupSchedule = Campaign::WARMUP_SCHEDULE;
 
-        return view('campaigns.create', compact('contacts', 'groupContacts', 'groups', 'warmupSchedule'));
+        return view('campaigns.create', compact('contacts', 'groups', 'warmupSchedule'));
     }
 
     public function store(Request $request)
@@ -200,11 +198,11 @@ class CampaignController extends Controller
         $accountId = $this->currentAccountId();
         abort_if((int) $campaign->account_id !== $accountId, 403);
 
+        // Only fetch columns needed for the contacts dropdown — avoids OOM on large lists
         $contacts = Contact::query()
             ->where('account_id', $accountId)
-            ->with('groups')
             ->orderBy('name')
-            ->get();
+            ->get(['id', 'name', 'email']);
 
         $groupContacts = Contact::query()
             ->whereHas('groups', function ($query) use ($accountId) {
@@ -212,7 +210,7 @@ class CampaignController extends Controller
             })
             ->with('groups')
             ->orderBy('name')
-            ->get();
+            ->get(['contacts.id', 'contacts.name', 'contacts.email']);
 
         $groups = Group::query()->where('account_id', $accountId)->orderBy('name')->get();
 
