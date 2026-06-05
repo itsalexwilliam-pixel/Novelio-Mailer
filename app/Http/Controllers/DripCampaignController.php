@@ -27,7 +27,7 @@ class DripCampaignController extends Controller
     public function create()
     {
         $accountId = $this->currentAccountId();
-        $groups = Group::where('account_id', $accountId)->orderBy('name')->get();
+        $groups = Group::where('account_id', $accountId)->withCount('contacts')->orderBy('name')->get();
 
         return view('drip.create', compact('groups'));
     }
@@ -71,7 +71,7 @@ class DripCampaignController extends Controller
         $accountId = $this->currentAccountId();
         abort_if((int) $drip->account_id !== $accountId, 403);
 
-        $groups = Group::where('account_id', $accountId)->orderBy('name')->get();
+        $groups = Group::where('account_id', $accountId)->withCount('contacts')->orderBy('name')->get();
 
         return view('drip.edit', compact('drip', 'groups'));
     }

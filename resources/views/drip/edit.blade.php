@@ -38,7 +38,7 @@
                     <option value="">— No auto-enroll —</option>
                     @foreach($groups as $group)
                         <option value="{{ $group->id }}" @selected(old('group_id', $drip->group_id) == $group->id)>
-                            {{ $group->name }} ({{ $group->contacts()->count() }} contacts)
+                            {{ $group->name }} ({{ $group->contacts_count }} contacts)
                         </option>
                     @endforeach
                 </select>

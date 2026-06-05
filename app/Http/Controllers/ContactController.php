@@ -15,8 +15,9 @@ class ContactController extends Controller
 {
     public function index()
     {
-        $contacts = Contact::with('groups', 'tags')->latest()->paginate(10);
-        $groups   = Group::orderBy('name')->get();
+        $accountId = $this->currentAccountId();
+        $contacts = Contact::with('groups', 'tags')->where('account_id', $accountId)->latest()->paginate(10);
+        $groups   = Group::where('account_id', $accountId)->orderBy('name')->get();
 
         // Open counts per contact
         $contactIds = $contacts->pluck('id');
@@ -45,7 +46,8 @@ class ContactController extends Controller
 
     public function create()
     {
-        $groups = Group::orderBy('name')->get();
+        $accountId = $this->currentAccountId();
+        $groups = Group::where('account_id', $accountId)->orderBy('name')->get();
         return view('contacts.create', compact('groups'));
     }
 
@@ -79,7 +81,8 @@ class ContactController extends Controller
 
     public function edit(Contact $contact)
     {
-        $groups = Group::orderBy('name')->get();
+        $accountId = $this->currentAccountId();
+        $groups = Group::where('account_id', $accountId)->orderBy('name')->get();
         $selectedGroups = $contact->groups()->pluck('groups.id')->toArray();
 
         return view('contacts.edit', compact('contact', 'groups', 'selectedGroups'));
@@ -151,10 +154,17 @@ class ContactController extends Controller
             return back()->withErrors(['ids' => 'No valid contacts selected.']);
         }
 
-        // Attach the group to all selected contacts (without detaching existing groups)
-        $contacts = Contact::whereIn('id', $validIds)->get();
-        foreach ($contacts as $contact) {
-            $contact->groups()->syncWithoutDetaching([$groupId]);
+        // Bulk insert into pivot table — avoids loading all contacts + N+1 sync queries
+        $existingContactIds = DB::table('contact_group')
+            ->whereIn('contact_id', $validIds)
+            ->where('group_id', $groupId)
+            ->pluck('contact_id')
+            ->all();
+
+        $newContactIds = array_diff($validIds, $existingContactIds);
+        if (!empty($newContactIds)) {
+            $rows = array_map(fn($id) => ['contact_id' => $id, 'group_id' => $groupId], $newContactIds);
+            DB::table('contact_group')->insert($rows);
         }
 
         return back()->with('success', count($validIds) . ' contact(s) assigned to group successfully.');
@@ -207,10 +217,11 @@ class ContactController extends Controller
     {
         $accountId = $this->currentAccountId();
 
+        // lazy(500) chunks 500 records at a time with eager loading — avoids OOM on large lists
         $contacts = Contact::with('groups', 'tags')
             ->where('account_id', $accountId)
             ->orderBy('name')
-            ->get();
+            ->lazy(500);
 
         $filename = 'contacts_' . now()->format('Y-m-d_His') . '.csv';
 
