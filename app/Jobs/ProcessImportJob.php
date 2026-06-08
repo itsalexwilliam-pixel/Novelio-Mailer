@@ -14,20 +14,21 @@ class ProcessImportJob implements ShouldQueue
     use Queueable;
 
     /**
-     * Route this job through the long-running queue connection so the database
-     * queue driver uses retry_after: 1800 instead of the default 90 seconds.
-     * This prevents a second worker from picking up the job while the first is
-     * still processing it (the root cause of the "stuck at 250 rows" bug).
+     * The Queueable trait declares $connection and $queue without type hints,
+     * so we must NOT use typed property syntax here (causes PHP fatal error).
+     * Instead, set them without types so PHP treats them as compatible.
      */
-    public string $connection = 'database_long';
-    public string $queue      = 'long';
+    // phpcs:ignore
+    public $connection = 'database_long'; // uses retry_after: 1800 (see config/queue.php)
+    // phpcs:ignore
+    public $queue = 'long';
 
     /** Max attempts before the job is marked permanently failed. */
     public int $tries = 2;
 
     /**
      * How long (seconds) the worker process may run this job before supervisor
-     * sends SIGALRM and terminates it. Must match supervisor --timeout.
+     * sends SIGALRM and terminates it. Must match supervisor --timeout=1800.
      */
     public int $timeout = 1800;
 
