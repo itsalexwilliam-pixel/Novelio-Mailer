@@ -13,16 +13,6 @@ class ProcessImportJob implements ShouldQueue
 {
     use Queueable;
 
-    /**
-     * The Queueable trait declares $connection and $queue without type hints,
-     * so we must NOT use typed property syntax here (causes PHP fatal error).
-     * Instead, set them without types so PHP treats them as compatible.
-     */
-    // phpcs:ignore
-    public $connection = 'database_long'; // uses retry_after: 1800 (see config/queue.php)
-    // phpcs:ignore
-    public $queue = 'long';
-
     /** Max attempts before the job is marked permanently failed. */
     public int $tries = 2;
 
@@ -40,6 +30,15 @@ class ProcessImportJob implements ShouldQueue
 
     public function __construct(public int $importRunId)
     {
+        // Route through the dedicated long-running queue connection
+        // (retry_after: 1800 — see config/queue.php 'database_long').
+        //
+        // We intentionally do NOT redeclare $connection/$queue as class
+        // properties: PHP 8.2 throws a fatal error when a class redefines a
+        // trait property with a different default value, which is exactly what
+        // caused the 500.  Using the trait's own setter methods is the correct
+        // Laravel pattern for setting the connection/queue per-job-instance.
+        $this->onConnection('database_long')->onQueue('long');
     }
 
     public function handle(): void
