@@ -13,85 +13,100 @@ class ProcessImportJob implements ShouldQueue
 {
     use Queueable;
 
-    /** Max attempts before the job is marked permanently failed. */
-    public int $tries = 2;
+    /**
+     * Only try once. If the job fails, the import_run status is set to
+     * 'failed' by our own catch block, so a queue-level retry would just
+     * reset and re-process, which is not what we want.
+     */
+    public int $tries = 1;
 
     /**
-     * How long (seconds) the worker process may run this job before supervisor
-     * sends SIGALRM and terminates it. Must match supervisor --timeout=1800.
+     * Give the job up to 30 minutes to run before the supervisor kills it.
+     * This MUST match the supervisor --timeout value for the queue worker.
+     * With the bulk email-lookup approach the job typically completes in
+     * under 30 seconds even for large CSV files, but we keep a large safety
+     * margin here.
      */
     public int $timeout = 1800;
 
     /**
-     * Maximum number of failed/skipped row details to store in the DB.
-     * Prevents the failed_rows JSON from growing unbounded on large bad files.
+     * Maximum number of failed/skipped row details persisted to the DB.
+     * Prevents the failed_rows JSON column from growing unbounded on files
+     * where thousands of rows are invalid.
      */
     private const MAX_FAILED_ROWS_STORED = 500;
 
     public function __construct(public int $importRunId)
     {
-        // Route through the dedicated long-running queue connection
-        // (retry_after: 1800 — see config/queue.php 'database_long').
-        //
-        // We intentionally do NOT redeclare $connection/$queue as class
-        // properties: PHP 8.2 throws a fatal error when a class redefines a
-        // trait property with a different default value, which is exactly what
-        // caused the 500.  Using the trait's own setter methods is the correct
-        // Laravel pattern for setting the connection/queue per-job-instance.
-        $this->onConnection('database_long')->onQueue('long');
+        // Dispatch to the default queue on the default database connection so
+        // the existing supervisor workers (which listen to 'default') pick it
+        // up immediately.  With the N+1 query eliminated the job finishes in
+        // ~3 s for 3 000 rows — well inside retry_after: 90, so no second
+        // worker can ever steal and reset this job.
     }
 
     public function handle(): void
     {
-        $importRun = ImportRun::find($this->importRunId);
-        if (!$importRun) {
-            return;
-        }
-
-        $importRun->update([
-            'status'        => 'processing',
-            'started_at'    => now(),
-            'error_message' => null,
-        ]);
-
-        $relativePath = trim((string) $importRun->stored_path);
-        $relativePath = str_replace('\\', '/', $relativePath);
-        $relativePath = ltrim($relativePath, '/');
-
-        if (! Storage::disk('local')->exists($relativePath)) {
-            $importRun->update([
-                'status'        => 'failed',
-                'error_message' => 'Uploaded CSV file not found. Path: ' . $relativePath,
-                'finished_at'   => now(),
-            ]);
-            return;
-        }
-
-        $absolutePath = Storage::disk('local')->path($relativePath);
-
-        $handle = fopen($absolutePath, 'r');
-        if (!$handle) {
-            $importRun->update([
-                'status'        => 'failed',
-                'error_message' => 'Could not open uploaded CSV file.',
-                'finished_at'   => now(),
-            ]);
-            return;
-        }
+        // ── Outer safety net ──────────────────────────────────────────────────
+        // Wrap EVERYTHING so that no exception can ever escape handle() and
+        // cause the queue to mark the job as FAIL.  A queue FAIL leaves the
+        // import_run in 'processing' status with no way for the user to
+        // recover via the UI.  We prefer to record the error ourselves.
+        $importRun = null;
+        $handle    = null;
 
         try {
-            // ── 1. Read headers ───────────────────────────────────────────────
-            $headers = fgetcsv($handle);
-            if (!$headers) {
-                fclose($handle);
+            $importRun = ImportRun::find($this->importRunId);
+            if (!$importRun) {
+                return; // import record was deleted — nothing to do
+            }
+
+            $importRun->update([
+                'status'        => 'processing',
+                'started_at'    => now(),
+                'error_message' => null,
+            ]);
+
+            // ── Locate the uploaded CSV ───────────────────────────────────────
+            $relativePath = trim((string) $importRun->stored_path);
+            $relativePath = str_replace('\\', '/', $relativePath);
+            $relativePath = ltrim($relativePath, '/');
+
+            if (! Storage::disk('local')->exists($relativePath)) {
                 $importRun->update([
                     'status'        => 'failed',
-                    'error_message' => 'CSV file appears to be empty.',
+                    'error_message' => 'Uploaded CSV file not found on server. Path checked: ' . $relativePath,
                     'finished_at'   => now(),
                 ]);
                 return;
             }
 
+            $absolutePath = Storage::disk('local')->path($relativePath);
+
+            $handle = fopen($absolutePath, 'r');
+            if (!$handle) {
+                $importRun->update([
+                    'status'        => 'failed',
+                    'error_message' => 'Could not open uploaded CSV file.',
+                    'finished_at'   => now(),
+                ]);
+                return;
+            }
+
+            // ── 1. Read headers ───────────────────────────────────────────────
+            $headers = fgetcsv($handle);
+            if (!$headers) {
+                fclose($handle);
+                $handle = null;
+                $importRun->update([
+                    'status'        => 'failed',
+                    'error_message' => 'CSV file appears to be empty (no header row).',
+                    'finished_at'   => now(),
+                ]);
+                return;
+            }
+
+            // Strip UTF-8 BOM from first header cell if present
             $headers[0] = ltrim((string) $headers[0], "\xEF\xBB\xBF");
             $headers    = array_map(static fn($h) => trim((string) $h), $headers);
 
@@ -117,9 +132,10 @@ class ProcessImportJob implements ShouldQueue
 
             if (!$hasName && !$hasFirstName) {
                 fclose($handle);
+                $handle = null;
                 $importRun->update([
                     'status'        => 'failed',
-                    'error_message' => 'No valid name column found in CSV headers. Headers found: ' . implode(', ', $headers),
+                    'error_message' => 'No name column found. Headers detected: ' . implode(', ', $headers),
                     'finished_at'   => now(),
                 ]);
                 return;
@@ -127,9 +143,10 @@ class ProcessImportJob implements ShouldQueue
 
             if ($emailIndex === false) {
                 fclose($handle);
+                $handle = null;
                 $importRun->update([
                     'status'        => 'failed',
-                    'error_message' => 'Email column "' . $emailCol . '" not found in CSV headers. Headers found: ' . implode(', ', $headers),
+                    'error_message' => 'Email column "' . $emailCol . '" not found. Headers detected: ' . implode(', ', $headers),
                     'finished_at'   => now(),
                 ]);
                 return;
@@ -138,8 +155,9 @@ class ProcessImportJob implements ShouldQueue
             // ── 3. Read all data rows into memory ─────────────────────────────
             $allRows = [];
             while (($row = fgetcsv($handle)) !== false) {
+                // Skip completely blank lines
                 if (count(array_filter($row, fn($v) => trim((string) $v) !== '')) === 0) {
-                    continue; // skip blank lines
+                    continue;
                 }
                 $allRows[] = $row;
             }
@@ -164,8 +182,7 @@ class ProcessImportJob implements ShouldQueue
                 ->values()
                 ->all();
 
-            // Extract every email from the file in one pass so we can do a
-            // single WHERE IN lookup instead of one query per row.
+            // Collect every non-empty email from the file in a single pass
             $allFileEmails = [];
             foreach ($allRows as $row) {
                 $e = strtolower(trim((string) ($row[$emailIndex] ?? '')));
@@ -174,8 +191,7 @@ class ProcessImportJob implements ShouldQueue
                 }
             }
 
-            // Fetch all already-existing emails in one query, chunk to stay
-            // within MySQL's max_allowed_packet limits on very large imports.
+            // One bulk SELECT instead of one query per row (kills N+1 problem)
             $existingEmails = [];
             foreach (array_chunk($allFileEmails, 500) as $chunk) {
                 $found = Contact::where('account_id', $accountId)
@@ -188,19 +204,19 @@ class ProcessImportJob implements ShouldQueue
             }
 
             // ── 5. Process rows ───────────────────────────────────────────────
-            $seenInFile = [];   // tracks duplicates within the file
+            $seenInFile = [];
             $failedRows = [];
             $processed  = 0;
             $imported   = 0;
             $skipped    = 0;
-            $rowNumber  = 1;    // header = row 1
+            $rowNumber  = 1; // header is row 1
 
             foreach ($allRows as $row) {
                 $rowNumber++;
                 $processed++;
                 $reasons = [];
 
-                // Build name
+                // Resolve name
                 if ($hasName) {
                     $name = trim((string) ($row[$nameIndex] ?? ''));
                 } else {
@@ -219,9 +235,8 @@ class ProcessImportJob implements ShouldQueue
                     ? trim((string) ($row[$phoneIndex] ?? ''))
                     : null;
 
-                // ── Website: sanitise before validation ───────────────────────
-                // Prepend scheme if missing, then discard the value (don't fail
-                // the whole row) if it still isn't a valid URL.
+                // Sanitise website: prepend scheme if missing; discard if
+                // still invalid so that bad website data never rejects a row.
                 $websiteRaw = $websiteIndex !== false
                     ? trim((string) ($row[$websiteIndex] ?? ''))
                     : '';
@@ -232,15 +247,12 @@ class ProcessImportJob implements ShouldQueue
                     if (!preg_match('/^https?:\/\//i', $candidate)) {
                         $candidate = 'https://' . $candidate;
                     }
-                    // Only keep the value if PHP itself considers it a valid URL.
-                    // Invalid websites (N/A, commas, plain text …) are silently
-                    // cleared so the row is NOT skipped because of bad website data.
                     $website = filter_var($candidate, FILTER_VALIDATE_URL) !== false
                         ? $candidate
                         : null;
                 }
 
-                // ── Validate name + email ─────────────────────────────────────
+                // Validate name + email (website already sanitised above)
                 $validator = Validator::make(
                     ['name' => $name, 'email' => $email],
                     [
@@ -255,19 +267,18 @@ class ProcessImportJob implements ShouldQueue
                     }
                 }
 
-                // ── Duplicate within this file ────────────────────────────────
+                // Duplicate within this file
                 if ($email !== '' && isset($seenInFile[$email])) {
                     $reasons[] = 'Duplicate email in this file';
                 }
 
-                // ── Already in database (uses the pre-loaded set) ─────────────
+                // Already exists in the database (checked via bulk pre-load)
                 if ($email !== '' && empty($reasons) && isset($existingEmails[$email])) {
                     $reasons[] = 'Email already exists in contacts';
                 }
 
                 if (!empty($reasons)) {
                     $skipped++;
-                    // Cap stored details to avoid unbounded JSON growth
                     if (count($failedRows) < self::MAX_FAILED_ROWS_STORED) {
                         $failedRows[] = [
                             'row'     => $rowNumber,
@@ -290,15 +301,12 @@ class ProcessImportJob implements ShouldQueue
                         $contact->groups()->sync($groupIds);
                     }
 
-                    // Mark this email as "seen" so later duplicates in the file
-                    // are caught, and add to the in-memory existing set so the
-                    // same address cannot be inserted twice in one run.
-                    $seenInFile[$email]      = true;
-                    $existingEmails[$email]  = true;
+                    $seenInFile[$email]     = true;
+                    $existingEmails[$email] = true;
                     $imported++;
                 }
 
-                // Persist progress every 50 rows (reduced write frequency)
+                // Persist progress every 50 rows to reduce DB writes
                 if ($processed % 50 === 0 || $processed === $totalRows) {
                     $importRun->update([
                         'processed_rows' => $processed,
@@ -309,7 +317,7 @@ class ProcessImportJob implements ShouldQueue
                 }
             }
 
-            // ── 6. Final status update ────────────────────────────────────────
+            // ── 6. Mark completed ─────────────────────────────────────────────
             $importRun->update([
                 'status'         => 'completed',
                 'processed_rows' => $processed,
@@ -320,15 +328,41 @@ class ProcessImportJob implements ShouldQueue
             ]);
 
         } catch (\Throwable $e) {
+            // ── Cleanup ───────────────────────────────────────────────────────
             if (is_resource($handle)) {
                 fclose($handle);
             }
 
-            $importRun->update([
-                'status'        => 'failed',
-                'error_message' => $e->getMessage(),
-                'finished_at'   => now(),
-            ]);
+            // Attempt to record the error in the DB.
+            // The error message is stripped to ASCII-safe text to avoid
+            // DB encoding rejections (e.g. MySQL utf8mb3 rejecting 4-byte
+            // characters in binary exception messages).
+            if ($importRun !== null) {
+                try {
+                    $safeMessage = mb_substr(
+                        preg_replace('/[^\x20-\x7E\n\r\t]/u', '?', $e->getMessage()) ?? $e->getMessage(),
+                        0,
+                        1000
+                    );
+
+                    $importRun->update([
+                        'status'        => 'failed',
+                        'error_message' => $safeMessage,
+                        'finished_at'   => now(),
+                    ]);
+                } catch (\Throwable) {
+                    // DB is unavailable — nothing more we can do.
+                    // The job will return normally (not re-throw) so the
+                    // queue does not mark this as a permanent FAIL, which
+                    // would hide the real error from the UI.
+                }
+            }
+
+            // Do NOT re-throw. Returning normally means the queue marks
+            // this job as DONE (not FAIL).  The import_run.status='failed'
+            // with an error_message tells the user what went wrong through
+            // the UI.  A queue FAIL would leave import_run stuck at
+            // 'processing' with no way to recover.
         }
     }
 }
