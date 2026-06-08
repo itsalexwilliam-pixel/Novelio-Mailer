@@ -104,20 +104,22 @@ class ImportController extends Controller
     {
         $this->authorizeImportRun($request, $importRun);
 
-        if (!in_array($importRun->status, ['queued', 'failed'], true)) {
+        // Also allow reprocessing 'processing' imports that got stuck mid-run
+        // (e.g. the queue worker died before the job could mark itself done).
+        if (!in_array($importRun->status, ['queued', 'failed', 'processing'], true)) {
             return redirect()->route('import.progress', $importRun)
-                ->withErrors(['reprocess' => 'Only queued or failed imports can be reprocessed.']);
+                ->withErrors(['reprocess' => 'Only queued, processing, or failed imports can be reprocessed.']);
         }
 
         $importRun->update([
-            'status' => 'queued',
-            'error_message' => null,
-            'started_at' => null,
-            'finished_at' => null,
+            'status'         => 'queued',
+            'error_message'  => null,
+            'started_at'     => null,
+            'finished_at'    => null,
             'processed_rows' => 0,
-            'imported_rows' => 0,
-            'skipped_rows' => 0,
-            'failed_rows' => [],
+            'imported_rows'  => 0,
+            'skipped_rows'   => 0,
+            'failed_rows'    => [],
         ]);
 
         ProcessImportJob::dispatch($importRun->id);
