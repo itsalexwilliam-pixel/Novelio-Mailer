@@ -36,6 +36,34 @@ class ProcessImportJob implements ShouldQueue
      */
     private const MAX_FAILED_ROWS_STORED = 500;
 
+    /**
+     * Convert a raw CSV string to valid UTF-8.
+     *
+     * Excel / Windows CSVs are often saved in Windows-1252 (Latin-1).
+     * Bytes like 0xAE (® registered trademark) are valid Windows-1252 but
+     * are NOT valid UTF-8 — MySQL rejects them with "Incorrect string value".
+     *
+     * If the string is already valid UTF-8 it is returned unchanged.
+     * Otherwise we try to decode it as Windows-1252.  Any bytes that still
+     * cannot be represented in UTF-8 are replaced with a safe placeholder.
+     */
+    private static function toUtf8(string $value): string
+    {
+        if ($value === '' || mb_check_encoding($value, 'UTF-8')) {
+            return $value;
+        }
+
+        $converted = mb_convert_encoding($value, 'UTF-8', 'Windows-1252');
+
+        // mb_convert_encoding returns false only on hard failures; fall back
+        // to stripping non-ASCII bytes entirely in that unlikely case.
+        if ($converted === false) {
+            return preg_replace('/[\x80-\xFF]/', '?', $value) ?? $value;
+        }
+
+        return $converted;
+    }
+
     public function __construct(public int $importRunId)
     {
         // Dispatch to the default queue on the default database connection so
@@ -216,29 +244,30 @@ class ProcessImportJob implements ShouldQueue
                 $processed++;
                 $reasons = [];
 
-                // Resolve name
+                // Resolve name — sanitise to UTF-8 so Windows-1252 chars
+                // (®, ™, é, etc.) don't cause MySQL "Incorrect string value"
                 if ($hasName) {
-                    $name = trim((string) ($row[$nameIndex] ?? ''));
+                    $name = self::toUtf8(trim((string) ($row[$nameIndex] ?? '')));
                 } else {
-                    $firstName = trim((string) ($row[$firstNameIndex] ?? ''));
+                    $firstName = self::toUtf8(trim((string) ($row[$firstNameIndex] ?? '')));
                     $lastName  = $lastNameIndex !== false
-                        ? trim((string) ($row[$lastNameIndex] ?? ''))
+                        ? self::toUtf8(trim((string) ($row[$lastNameIndex] ?? '')))
                         : '';
                     $name = trim($firstName . ' ' . $lastName);
                 }
 
                 $email        = strtolower(trim((string) ($row[$emailIndex] ?? '')));
                 $businessName = $businessNameIndex !== false
-                    ? trim((string) ($row[$businessNameIndex] ?? ''))
+                    ? self::toUtf8(trim((string) ($row[$businessNameIndex] ?? '')))
                     : null;
                 $phone        = $phoneIndex !== false
-                    ? trim((string) ($row[$phoneIndex] ?? ''))
+                    ? self::toUtf8(trim((string) ($row[$phoneIndex] ?? '')))
                     : null;
 
                 // Sanitise website: prepend scheme if missing; discard if
                 // still invalid so that bad website data never rejects a row.
                 $websiteRaw = $websiteIndex !== false
-                    ? trim((string) ($row[$websiteIndex] ?? ''))
+                    ? self::toUtf8(trim((string) ($row[$websiteIndex] ?? '')))
                     : '';
 
                 $website = null;
