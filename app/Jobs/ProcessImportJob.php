@@ -14,17 +14,22 @@ class ProcessImportJob implements ShouldQueue
     use Queueable;
 
     /**
-     * How long the job may run before the queue driver considers it lost.
-     * Must be longer than the longest possible import to prevent mid-job restarts.
+     * Route this job through the long-running queue connection so the database
+     * queue driver uses retry_after: 1800 instead of the default 90 seconds.
+     * This prevents a second worker from picking up the job while the first is
+     * still processing it (the root cause of the "stuck at 250 rows" bug).
      */
-    public int $timeout = 1800;
+    public string $connection = 'database_long';
+    public string $queue      = 'long';
+
+    /** Max attempts before the job is marked permanently failed. */
+    public int $tries = 2;
 
     /**
-     * Tell the database queue driver NOT to re-queue this job until 30 minutes
-     * have passed — overrides the global retry_after: 90 that was causing the
-     * job to be picked up a second time while still running.
+     * How long (seconds) the worker process may run this job before supervisor
+     * sends SIGALRM and terminates it. Must match supervisor --timeout.
      */
-    public int $retryAfter = 1800;
+    public int $timeout = 1800;
 
     /**
      * Maximum number of failed/skipped row details to store in the DB.
@@ -240,7 +245,7 @@ class ProcessImportJob implements ShouldQueue
                     ['name' => $name, 'email' => $email],
                     [
                         'name'  => ['required', 'string', 'max:255'],
-                        'email' => ['required', 'email:rfc', 'max:255'],
+                        'email' => ['required', 'email', 'max:255'],
                     ]
                 );
 

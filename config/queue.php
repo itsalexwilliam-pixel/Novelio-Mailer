@@ -44,6 +44,18 @@ return [
             'after_commit' => false,
         ],
 
+        // Dedicated connection for long-running jobs (CSV imports, etc.).
+        // retry_after: 1800 ensures the queue driver does NOT hand the job
+        // to a second worker while the first is still processing it.
+        'database_long' => [
+            'driver' => 'database',
+            'connection' => env('DB_QUEUE_CONNECTION'),
+            'table' => env('DB_QUEUE_TABLE', 'jobs'),
+            'queue' => 'long',
+            'retry_after' => 1800,
+            'after_commit' => false,
+        ],
+
         'beanstalkd' => [
             'driver' => 'beanstalkd',
             'host' => env('BEANSTALKD_QUEUE_HOST', 'localhost'),
