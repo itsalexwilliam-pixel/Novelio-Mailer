@@ -20,7 +20,7 @@ trait TracksEmailContent
 
         if ($includeUnsubscribe && !empty($unsubscribeEmail)) {
             $unsubscribeUrl = route('unsubscribe', ['email' => rawurlencode($unsubscribeEmail)]);
-            $appName = config('app.name', 'Novelio Technologies');
+            $appName = config('app.name', 'ProAdvisor Support');
             $companyAddress = 'Dover, Delaware, 19901 USA';
 
             $unsubscribeHtml = '

@@ -15,12 +15,12 @@ class TempAdminSeeder extends Seeder
     public function run(): void
     {
         $account = Account::firstOrCreate(
-            ['name' => 'Intuit Inc.'],
+            ['name' => 'ProAdvisor Support'],
             ['plan_id' => null]
         );
 
         $user = User::updateOrCreate(
-            ['email' => 'admin@intuit.local'],
+            ['email' => 'admin@proadvisor.local'],
             [
                 'name' => 'Admin',
                 'role' => 'admin',

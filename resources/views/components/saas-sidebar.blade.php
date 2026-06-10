@@ -34,7 +34,7 @@
     <div class="h-full flex flex-col">
         <div class="h-16 px-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
             <a href="{{ route('dashboard') }}" style="flex:1;min-width:0;display:flex;align-items:center;overflow:hidden;">
-                <img src="{{ asset('images/logo.png') }}" alt="{{ config('app.name', 'Novelio Technologies') }}" style="max-height:40px;max-width:180px;width:auto;height:auto;object-fit:contain;object-position:left;">
+                <img src="{{ asset('images/logo.png') }}" alt="{{ config('app.name', 'ProAdvisor Support') }}" style="max-height:40px;max-width:180px;width:auto;height:auto;object-fit:contain;object-position:left;">
             </a>
             <button type="button" id="sidebarCollapseBtn" class="hidden lg:inline-flex flex-shrink-0 p-2 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 6h16M4 12h16M4 18h16"/></svg>

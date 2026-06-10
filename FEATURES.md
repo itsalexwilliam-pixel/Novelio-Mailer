@@ -1,4 +1,4 @@
-# Intuit Inc. — Bulk Email Platform
+# ProAdvisor Support — Bulk Email Platform
 ## Features & Unique Selling Points
 
 ---
@@ -72,7 +72,7 @@
 - **Professional SaaS layout** — Sticky top navbar, collapsible sidebar, responsive for mobile
 - **7 built-in themes** — Light, Dark, Pro Teal, Midnight Navy, Deep Emerald, Royal Purple, Charcoal — all persisted in `localStorage`
 - **Dark mode** — Full Tailwind `dark:` class support across all views
-- **Intuit Inc. branding** — Custom logo in sidebar, top bar, login page, and browser tab (favicon)
+- **ProAdvisor Support branding** — Custom logo in sidebar, top bar, login page, and browser tab (favicon)
 - **Toast / flash messages** — Success and error feedback after every action
 - **Inline form validation** — Real-time body-empty guard on the campaign editor
 
@@ -83,7 +83,7 @@
 | # | USP | Detail |
 |---|-----|--------|
 | 1 | **Zero third-party email service dependency** | Send through any SMTP server you own — no Mailchimp, SendGrid, or SES required. You control the infrastructure entirely. |
-| 2 | **Per-row CSV import errors** | Most importers silently skip bad rows. Intuit Inc. shows you a table of every skipped contact with the exact reason (invalid email, duplicate, already exists), so you fix your data confidently. |
+| 2 | **Per-row CSV import errors** | Most importers silently skip bad rows. ProAdvisor Support shows you a table of every skipped contact with the exact reason (invalid email, duplicate, already exists), so you fix your data confidently. |
 | 3 | **Multi-SMTP priority routing** | Configure multiple SMTP accounts and assign priorities. The queue worker automatically picks the highest-priority active server, giving you built-in failover and load distribution. |
 | 4 | **Built-in email warm-up** | Gradually increase sending volume on a per-campaign basis using the warm-up schedule, protecting your domain reputation without any external tool. |
 | 5 | **Templates with one-click campaign load** | A modal in the campaign editor lets you search and load any saved template in seconds — subject line pre-fills automatically. |
@@ -116,15 +116,15 @@
 | Version | Highlights |
 |---------|-----------|
 | v1.0.0 | Initial release — core campaign & contact management |
-| v1.1.0 | Intuit Inc. rebrand; SMTP encryption; Quill editor sync fixes |
+| v1.1.0 | ProAdvisor Support rebrand; SMTP encryption; Quill editor sync fixes |
 | v1.2.0 | Phase 1 — Security hardening, rate limiting, Supervisor config |
 | v1.3.0 | Phase 2 — Rich account-scoped dashboard with Chart.js |
 | v1.4.0 | Phase 3 — Branded unsubscribe footer & List-Unsubscribe headers |
 | v1.5.0 | Phase 4 — Email Templates Library with campaign integration |
 | v1.6.0 | Phase 5 — Code refactoring; centralised account ID; real error messages |
 | v1.7.0 | Phase 6 — Per-row CSV import validation feedback |
-| **v1.8.0** | **UI polish — Load Template fix, table layouts (Templates & SMTP), 7 themes, Intuit Inc. logo & favicon** |
+| **v1.8.0** | **UI polish — Load Template fix, table layouts (Templates & SMTP), 7 themes, ProAdvisor Support logo & favicon** |
 
 ---
 
-*Built with ❤️ by Intuit Inc.*
+*Built with ❤️ by ProAdvisor Support*

@@ -17,7 +17,7 @@ class SendgridTestEmailCommand extends Command
         $subject = (string) $this->option('subject');
 
         try {
-            Mail::mailer('sendgrid')->raw('This is a SendGrid Web API integration test email from Novelio Mailer.', function ($message) use ($to, $subject) {
+            Mail::mailer('sendgrid')->raw('This is a SendGrid Web API integration test email from ProAdvisor Support.', function ($message) use ($to, $subject) {
                 $message->to($to)->subject($subject);
             });
 

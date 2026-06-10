@@ -14,7 +14,7 @@ class SettingsController extends Controller
 
         if (!$settings) {
             $settings = AppSetting::create([
-                'app_name' => config('app.name', 'Intuit Inc.'),
+                'app_name' => config('app.name', 'ProAdvisor Support'),
                 'default_from_name' => config('mail.from.name'),
                 'default_from_email' => config('mail.from.address'),
                 'mail_rate_per_minute' => 60,

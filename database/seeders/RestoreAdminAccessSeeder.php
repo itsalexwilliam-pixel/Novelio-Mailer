@@ -24,12 +24,12 @@ class RestoreAdminAccessSeeder extends Seeder
             ]);
         }
 
-        $user = User::query()->where('email', 'admin@noveliotech.com')->first();
+        $user = User::query()->where('email', 'admin@proadvisor.local')->first();
 
         if (! $user) {
             User::query()->create([
                 'name' => 'Admin',
-                'email' => 'admin@noveliotech.com',
+                'email' => 'admin@proadvisor.local',
                 'password' => bcrypt('Opetron11#$'),
                 'role' => 'admin',
                 'account_id' => $account->id,

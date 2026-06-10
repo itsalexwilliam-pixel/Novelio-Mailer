@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Unsubscribe &mdash; {{ config('app.name', 'Novelio Technologies') }}</title>
+    <title>Unsubscribe &mdash; {{ config('app.name', 'ProAdvisor Support') }}</title>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -88,7 +88,7 @@
         <p>{{ $message }}</p>
 
         <p class="brand">
-            &copy; {{ date('Y') }} <strong>{{ config('app.name', 'Novelio Technologies') }}</strong><br>
+            &copy; {{ date('Y') }} <strong>{{ config('app.name', 'ProAdvisor Support') }}</strong><br>
             Dover, Delaware, 19901 USA
         </p>
     </div>

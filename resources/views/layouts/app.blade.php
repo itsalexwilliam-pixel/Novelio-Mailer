@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ config('app.name', 'Novelio Technologies') }}</title>
-    <link rel="icon" type="image/svg+xml" href="{{ asset('favicon.svg') }}">
+    <title>{{ config('app.name', 'ProAdvisor Support') }}</title>
+    <link rel="icon" type="image/png" href="{{ asset('favicon.png') }}">
     <style>
         /* ── Theme: Light (default) ────────────────────────────── */
         body.theme-light { --accent: #4f46e5; --accent-hover: #4338ca; }
