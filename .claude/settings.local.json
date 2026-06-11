@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(php artisan make:migration backfill_account_id_on_email_queue --path=database/migrations)",
-      "Bash(php artisan migrate)"
-    ]
-  }
-}
