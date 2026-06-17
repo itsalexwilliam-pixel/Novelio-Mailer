@@ -431,18 +431,32 @@ class WorkMailsQueueCommand extends Command
                 $usage->increment('fail_count');
 
                 $this->warn("SMTP #{$smtp->id} failed for {$item->email}: {$lastError}");
+
+                // 4xx = temporary relay/server error. All SMTPs share the same relay host,
+                // so trying the remaining ones will just flood the relay and get the same 451.
+                // Break out immediately and let the scheduler retry this item next run.
+                if (preg_match('/\b4\d{2}\b/', $lastError)) {
+                    $this->warn("Temporary relay error (4xx) — stopping SMTP fallback for this email, will retry next run.");
+                    break;
+                }
             }
         }
 
         if (!$sent) {
             $attempts = $item->attempts + 1;
+
+            // 4xx temporary errors: keep as 'pending' so the next scheduler run retries,
+            // but still count the attempt so we don't retry forever (max 3 attempts).
+            $isTemporary = preg_match('/\b4\d{2}\b/', $lastError ?? '');
+            $newStatus   = ($isTemporary && $attempts < 3) ? 'pending' : 'failed';
+
             $item->update([
-                'attempts' => $attempts,
-                'status' => 'failed',
+                'attempts'   => $attempts,
+                'status'     => $newStatus,
                 'last_error' => $lastError ?? 'All SMTP servers failed',
             ]);
 
-            $this->error("Send failed: {$item->email} | attempts={$attempts} | error=" . ($lastError ?? 'All SMTP servers failed'));
+            $this->error("Send failed: {$item->email} | attempts={$attempts} | status={$newStatus} | error=" . ($lastError ?? 'All SMTP servers failed'));
         }
 
         return $sent;
