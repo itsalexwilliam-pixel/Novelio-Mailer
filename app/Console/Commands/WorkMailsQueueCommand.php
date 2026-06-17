@@ -432,11 +432,17 @@ class WorkMailsQueueCommand extends Command
 
                 $this->warn("SMTP #{$smtp->id} failed for {$item->email}: {$lastError}");
 
-                // 4xx = temporary relay/server error. All SMTPs share the same relay host,
-                // so trying the remaining ones will just flood the relay and get the same 451.
-                // Break out immediately and let the scheduler retry this item next run.
-                if (preg_match('/\b4\d{2}\b/', $lastError)) {
-                    $this->warn("Temporary relay error (4xx) — stopping SMTP fallback for this email, will retry next run.");
+                // Temporary errors: 4xx SMTP codes OR connection timeouts.
+                // All SMTPs share the same relay host, so trying the remaining ones will
+                // just flood the relay and get the same error. Break immediately and let
+                // the scheduler retry this item on the next run.
+                $isTemporaryError = preg_match('/\b4\d{2}\b/', $lastError)
+                    || stripos($lastError, 'timed out') !== false
+                    || stripos($lastError, 'timeout') !== false
+                    || stripos($lastError, 'connection refused') !== false;
+
+                if ($isTemporaryError) {
+                    $this->warn("Temporary error (4xx/timeout) — stopping SMTP fallback, will retry next run.");
                     break;
                 }
             }
@@ -445,9 +451,12 @@ class WorkMailsQueueCommand extends Command
         if (!$sent) {
             $attempts = $item->attempts + 1;
 
-            // 4xx temporary errors: keep as 'pending' so the next scheduler run retries,
-            // but still count the attempt so we don't retry forever (max 3 attempts).
-            $isTemporary = preg_match('/\b4\d{2}\b/', $lastError ?? '');
+            // 4xx / timeout temporary errors: keep as 'pending' so the next scheduler run
+            // retries, but still count the attempt so we don't retry forever (max 3).
+            $isTemporary = preg_match('/\b4\d{2}\b/', $lastError ?? '')
+                || stripos($lastError ?? '', 'timed out') !== false
+                || stripos($lastError ?? '', 'timeout') !== false
+                || stripos($lastError ?? '', 'connection refused') !== false;
             $newStatus   = ($isTemporary && $attempts < 3) ? 'pending' : 'failed';
 
             $item->update([
