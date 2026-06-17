@@ -69,8 +69,10 @@ class CampaignMail extends Mailable
 
         $this->withSymfonyMessage(function (\Symfony\Component\Mime\Email $email) use ($unsubscribeUrl) {
             $email->getHeaders()
-                ->addTextHeader('List-Unsubscribe', '<' . $unsubscribeUrl . '>')
-                ->addTextHeader('List-Unsubscribe-Post', 'List-Unsubscribe=One-Click');
+                ->addTextHeader('List-Unsubscribe', '<' . $unsubscribeUrl . '>');
+            // NOTE: List-Unsubscribe-Post (One-Click) header intentionally removed.
+            // It causes Gmail/Outlook bots to auto-unsubscribe users without any
+            // real click — inflating unsubscribe counts with false positives.
         });
 
         if (!empty($this->campaign->attachment_path) && Storage::disk('public')->exists($this->campaign->attachment_path)) {
