@@ -17,14 +17,28 @@ use Illuminate\Support\Facades\Mail;
 
 class WorkMailsQueueCommand extends Command
 {
-    protected $signature = 'queue:work-mails {--limit=60} {--campaign_id=}';
+    protected $signature = 'queue:work-mails {--limit=} {--campaign_id=} {--per-smtp=200}';
     protected $description = 'Process pending campaign emails with per-campaign throttling, fair distribution, SMTP rotation and retries';
 
     public function handle()
     {
-        $fallbackLimit = max(1, (int) $this->option('limit'));
+        $perSmtpLimit   = max(1, (int) $this->option('per-smtp'));
         $campaignIdOption = $this->option('campaign_id');
         $targetCampaignId = is_null($campaignIdOption) ? null : (int) $campaignIdOption;
+
+        // Auto-calculate batch limit: active SMTP count × per-SMTP limit.
+        // If --limit is explicitly passed it overrides the auto value.
+        if (!is_null($this->option('limit')) && $this->option('limit') !== '') {
+            $fallbackLimit = max(1, (int) $this->option('limit'));
+        } else {
+            $activeSmtpCount = SmtpServer::active()->count();
+            $fallbackLimit   = max(1, $activeSmtpCount) * $perSmtpLimit;
+            $this->line("Auto limit: {$activeSmtpCount} active SMTP(s) × {$perSmtpLimit} per-SMTP = {$fallbackLimit} total");
+        }
+
+        // Tracks how many emails each SMTP server sends in this single run.
+        // Keyed by smtp_server.id → count sent this run.
+        $smtpSentInThisRun = [];
 
         $processed = 0;
         $processedPerCampaign = [];
@@ -102,7 +116,7 @@ class WorkMailsQueueCommand extends Command
             $bucket = $orderedBuckets[$campaignId] ?? collect();
 
             foreach ($bucket as $item) {
-                $this->processQueueItem($item);
+                $this->processQueueItem($item, $smtpSentInThisRun, $perSmtpLimit);
                 $processed++;
                 $processedPerCampaign[$campaignId] = ($processedPerCampaign[$campaignId] ?? 0) + 1;
             }
@@ -127,7 +141,7 @@ class WorkMailsQueueCommand extends Command
                     $item = $bucket[$idx];
                     $cursorByCampaign[$campaignId] = $idx + 1;
 
-                    $this->processQueueItem($item);
+                    $this->processQueueItem($item, $smtpSentInThisRun, $perSmtpLimit);
                     $processed++;
                     $processedPerCampaign[$campaignId] = ($processedPerCampaign[$campaignId] ?? 0) + 1;
                 }
@@ -210,7 +224,7 @@ class WorkMailsQueueCommand extends Command
         return max(0, (int) $effective);
     }
 
-    private function processQueueItem(EmailQueue $item): bool
+    private function processQueueItem(EmailQueue $item, array &$smtpSentInThisRun = [], int $perSmtpLimit = 200): bool
     {
         $this->line("Processing queue #{$item->id} | campaign #{$item->campaign_id} | {$item->email} | status={$item->status} attempts={$item->attempts}");
 
@@ -284,6 +298,14 @@ class WorkMailsQueueCommand extends Command
         $today = Carbon::today()->toDateString();
 
         foreach ($rotationOrderedServers as $smtp) {
+            // ── Per-run per-SMTP cap (default 200 per SMTP per scheduler run) ──
+            $sentThisRun = $smtpSentInThisRun[$smtp->id] ?? 0;
+            if ($sentThisRun >= $perSmtpLimit) {
+                $this->line("SMTP #{$smtp->id} reached per-run cap of {$perSmtpLimit}. Skipping.");
+                continue;
+            }
+
+            // ── Daily limit check ─────────────────────────────────────────────
             if (!is_null($smtp->daily_limit)) {
                 $todaySentCount = SmtpServerUsage::query()
                     ->where('smtp_server_id', $smtp->id)
@@ -296,7 +318,7 @@ class WorkMailsQueueCommand extends Command
                 }
             }
 
-            $this->line("Using SMTP #{$smtp->id} {$smtp->host}:{$smtp->port}");
+            $this->line("Using SMTP #{$smtp->id} {$smtp->host}:{$smtp->port} (run-count: {$sentThisRun}/{$perSmtpLimit})");
 
             config([
                 'mail.default' => 'smtp',
@@ -374,7 +396,10 @@ class WorkMailsQueueCommand extends Command
 
                 $this->advanceRoundRobinPointer($accountId, (int) $smtp->id);
 
-                $this->info("Sent successfully: {$item->email}");
+                // Increment per-run per-SMTP counter
+                $smtpSentInThisRun[$smtp->id] = ($smtpSentInThisRun[$smtp->id] ?? 0) + 1;
+
+                $this->info("Sent successfully: {$item->email} | SMTP #{$smtp->id} run-total: {$smtpSentInThisRun[$smtp->id]}/{$perSmtpLimit}");
                 $sent = true;
 
                 break;

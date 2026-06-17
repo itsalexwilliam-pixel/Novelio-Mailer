@@ -12,7 +12,9 @@ Artisan::command('inspire', function () {
 // previous run is still executing (e.g. because sleep() inside work-mails is
 // blocking). The lock expiry (minutes) is set conservatively above each
 // command's expected worst-case runtime.
-Schedule::command('queue:work-mails --limit=60')
+// Sends 200 emails per active SMTP server per minute (auto-scales with SMTP count).
+// e.g. 3 SMTPs → 600 emails/min | 5 SMTPs → 1000 emails/min
+Schedule::command('queue:work-mails --per-smtp=200')
     ->everyMinute()
     ->withoutOverlapping(10); // max 10-min lock — covers the 5-min job timeout
 
